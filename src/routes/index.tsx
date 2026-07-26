@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/solid-router'
 import { createClientOnlyFn } from '@tanstack/solid-start'
-import { For, Show, createMemo, createSignal } from 'solid-js'
+import { For, Show, createMemo, createSignal, onMount } from 'solid-js'
 
 import { formatMilliseconds, parseFastCapInput } from '~/shared/fastcap/model'
 import type {
@@ -14,6 +14,7 @@ import type { FastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions
 export const Route = createFileRoute('/')({ component: App })
 
 type ViewMode = 'episode' | 'index'
+const showImagesStorageKey = 'fastcap-show:show-episode-images'
 
 const getClientEpisodeMetadata = createClientOnlyFn(
   async (episode: ReturnType<typeof toMetadataPayload>) => {
@@ -43,15 +44,25 @@ function App() {
   const [metadata, setMetadata] =
     createSignal<Record<string, FastCapEpisodeMetadata>>()
   const [isLoadingMetadata, setIsLoadingMetadata] = createSignal(false)
+  const [showEpisodeImages, setShowEpisodeImages] = createSignal(true)
   let metadataRequestId = 0
 
-  const loadingMessage = createMemo(() =>
-    isParsing()
-      ? '正在解析 fastcap…'
-      : isLoadingMetadata()
-        ? '正在加载剧集信息…'
-        : '',
-  )
+  onMount(() => {
+    const saved = localStorage.getItem(showImagesStorageKey)
+    if (saved !== null) setShowEpisodeImages(saved === 'true')
+  })
+
+  const toggleEpisodeImages = (value: boolean) => {
+    setShowEpisodeImages(value)
+    localStorage.setItem(showImagesStorageKey, String(value))
+  }
+
+  const mergeMetadata = (item: FastCapEpisodeMetadata) => {
+    setMetadata((current) => ({
+      ...current,
+      [item.key]: item,
+    }))
+  }
 
   const loadMetadata = async (episodes: Array<FastCapEpisodeRow>) => {
     const requestId = metadataRequestId + 1
@@ -68,16 +79,12 @@ function App() {
     const payload = episodes.map(toMetadataPayload)
 
     try {
-      const entries = await Promise.all(
-        payload.map(async (episode) => [
-          episode.key,
-          await resolveMetadataClientFirst(episode),
-        ]),
+      await Promise.all(
+        payload.map(async (episode) => {
+          const item = await resolveMetadataClientFirst(episode)
+          if (requestId === metadataRequestId) mergeMetadata(item)
+        }),
       )
-
-      if (requestId === metadataRequestId) {
-        setMetadata(Object.fromEntries(entries))
-      }
     } finally {
       if (requestId === metadataRequestId) setIsLoadingMetadata(false)
     }
@@ -241,6 +248,16 @@ function App() {
                       依据索引
                     </ModeButton>
                   </div>
+                  <label class="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={showEpisodeImages()}
+                      onChange={(event) =>
+                        toggleEpisodeImages(event.currentTarget.checked)
+                      }
+                    />
+                    显示剧集图片
+                  </label>
                 </div>
 
                 <Show
@@ -250,6 +267,7 @@ function App() {
                       rows={data().indexRows}
                       metadata={metadata()}
                       loading={isLoadingMetadata()}
+                      showImages={showEpisodeImages()}
                     />
                   }
                 >
@@ -257,18 +275,19 @@ function App() {
                     episodes={data().episodeRows}
                     metadata={metadata()}
                     loading={isLoadingMetadata()}
+                    showImages={showEpisodeImages()}
                   />
                 </Show>
               </div>
             )}
           </Show>
 
-          <Show when={loadingMessage()}>
+          <Show when={isParsing()}>
             <div class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[2px]">
               <div class="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
                 <span class="h-3 w-3 animate-pulse rounded-full bg-slate-900" />
                 <span class="text-sm font-medium text-slate-700">
-                  {loadingMessage()}
+                  正在解析 fastcap…
                 </span>
               </div>
             </div>
@@ -333,6 +352,7 @@ function EpisodeTable(props: {
   episodes: Array<FastCapEpisodeRow>
   metadata?: Record<string, FastCapEpisodeMetadata>
   loading: boolean
+  showImages: boolean
 }) {
   return (
     <div class="overflow-x-auto rounded-lg border border-slate-200">
@@ -368,6 +388,7 @@ function EpisodeTable(props: {
                           episode={episode}
                           metadata={props.metadata?.[episode.key]}
                           loading={props.loading}
+                          showImage={props.showImages}
                         />
                       </Show>
                     </td>
@@ -403,6 +424,7 @@ function IndexTable(props: {
   rows: Array<FastCapIndexRow>
   metadata?: Record<string, FastCapEpisodeMetadata>
   loading: boolean
+  showImages: boolean
 }) {
   return (
     <div class="overflow-x-auto rounded-lg border border-slate-200">
@@ -449,6 +471,7 @@ function IndexTable(props: {
                     }}
                     metadata={props.metadata?.[row.episodeKey]}
                     loading={props.loading}
+                    showImage={props.showImages}
                   />
                 </td>
                 <td class="px-3 py-3 font-mono text-xs text-slate-700">
@@ -471,31 +494,56 @@ function EpisodeMeta(props: {
   episode: FastCapEpisodeRow
   metadata?: FastCapEpisodeMetadata
   loading: boolean
+  showImage: boolean
 }) {
   const status = createMemo(() => props.metadata?.status)
   return (
-    <div>
-      <div class="flex flex-wrap items-center gap-2">
-        <p class="m-0 font-medium text-slate-950">
-          {props.metadata?.title ?? `EP ${props.episode.tempEpId}`}
-        </p>
-        <Show when={props.loading}>
-          <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">
-            加载中
-          </span>
+    <div class="flex gap-3">
+      <Show when={props.showImage && props.metadata?.imageUrl}>
+        {(imageUrl) => (
+          <img
+            src={imageUrl()}
+            alt=""
+            loading="lazy"
+            class="h-20 w-14 flex-none rounded border border-slate-200 object-cover"
+          />
+        )}
+      </Show>
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <p class="m-0 font-medium text-slate-950">
+            {props.metadata?.title ?? `EP ${props.episode.tempEpId}`}
+          </p>
+          <Show when={props.loading}>
+            <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">
+              加载中
+            </span>
+          </Show>
+          <Show when={status() === 'fallback'}>
+            <span class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
+              降级
+            </span>
+          </Show>
+        </div>
+        <Show
+          when={
+            props.metadata?.seriesTitle ||
+            props.metadata?.seasonTitle ||
+            props.metadata?.episodeLabel ||
+            props.metadata?.duration
+          }
+        >
+          <p class="mt-1 mb-0 text-xs text-slate-700">
+            {formatEpisodeDetails(props.metadata)}
+          </p>
         </Show>
-        <Show when={status() === 'fallback'}>
-          <span class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
-            降级
-          </span>
+        <p class="mt-1 mb-0 text-xs text-slate-500">
+          {props.metadata?.subtitle || formatRefs(props.episode.refs)}
+        </p>
+        <Show when={props.metadata?.error}>
+          {(error) => <p class="mt-1 mb-0 text-xs text-amber-700">{error()}</p>}
         </Show>
       </div>
-      <p class="mt-1 mb-0 text-xs text-slate-500">
-        {props.metadata?.subtitle || formatRefs(props.episode.refs)}
-      </p>
-      <Show when={props.metadata?.error}>
-        {(error) => <p class="mt-1 mb-0 text-xs text-amber-700">{error()}</p>}
-      </Show>
     </div>
   )
 }
@@ -553,6 +601,18 @@ function formatRefs(refs: { bgmtv_epid?: string; tmdb_urlc?: string }) {
   return [
     refs.bgmtv_epid ? `Bangumi ${refs.bgmtv_epid}` : undefined,
     refs.tmdb_urlc ? `TMDB ${refs.tmdb_urlc}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function formatEpisodeDetails(metadata?: FastCapEpisodeMetadata) {
+  if (!metadata) return ''
+  return [
+    metadata.seriesTitle,
+    metadata.seasonTitle,
+    metadata.episodeLabel,
+    metadata.duration ? `时长 ${metadata.duration}` : undefined,
   ]
     .filter(Boolean)
     .join(' · ')
