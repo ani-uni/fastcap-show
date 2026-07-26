@@ -15,3 +15,5 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: '*'
+minimumReleaseAgeExclude:
+  - '@ani-uni/fastcap'

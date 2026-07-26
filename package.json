@@ -14,6 +14,7 @@
     "prepare": "vp config"
   },
   "dependencies": {
+    "@ani-uni/fastcap": "^0.0.2",
     "@fontsource/inter": "^5.1.1",
     "@sentry/solid": "^10.67.0",
     "@t3-oss/env-core": "^0.13.10",
@@ -28,6 +29,7 @@
     "@tanstack/store": "latest",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "ky": "^2.0.2",
     "nitro": "3.0.260610-beta",
     "solid-js": "^1.9.12",
     "tailwind-merge": "^3.0.2",

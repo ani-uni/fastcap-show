@@ -1,55 +1,532 @@
 import { createFileRoute } from '@tanstack/solid-router'
+import { For, Show, createMemo, createSignal } from 'solid-js'
+
+import { formatMilliseconds, parseFastCapInput } from '~/shared/fastcap/model'
+import type {
+  FastCapEpisodeRow,
+  FastCapIndexRow,
+  FastCapParseResult,
+} from '~/shared/fastcap/model'
+import { getFastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
+import type { FastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
 
 export const Route = createFileRoute('/')({ component: App })
 
-function App() {
-  return (
-    <main class="page-wrap px-4 pb-8 pt-14">
-      <section class="island-shell rise-in relative overflow-hidden rounded-[2rem] px-6 py-10 sm:px-10 sm:py-14">
-        <div class="pointer-events-none absolute -left-20 -top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(79,184,178,0.32),transparent_66%)]" />
-        <div class="pointer-events-none absolute -bottom-20 -right-20 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(47,106,74,0.18),transparent_66%)]" />
-        <p class="island-kicker mb-3">TanStack Start Base Template</p>
-        <h1 class="display-title mb-5 max-w-3xl text-4xl leading-[1.02] font-bold tracking-tight text-[var(--sea-ink)] sm:text-6xl">
-          Start simple, ship quickly.
-        </h1>
-        <p class="mb-8 max-w-2xl text-base text-[var(--sea-ink-soft)] sm:text-lg">
-          This base starter intentionally keeps things light: two routes, clean
-          structure, and the essentials you need to build from scratch.
-        </p>
-        <div class="flex flex-wrap gap-3">
-          <a
-            href="/about"
-            class="rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] no-underline transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)]"
-          >
-            About This Starter
-          </a>
-          <a
-            href="https://tanstack.com/router"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="rounded-full border border-[rgba(23,58,64,0.2)] bg-white/50 px-5 py-2.5 text-sm font-semibold text-[var(--sea-ink)] no-underline transition hover:-translate-y-0.5 hover:border-[rgba(23,58,64,0.35)]"
-          >
-            Router Guide
-          </a>
-        </div>
-      </section>
+type ViewMode = 'episode' | 'index'
 
-      <section class="island-shell mt-8 rounded-2xl p-6">
-        <p class="island-kicker mb-2">Quick Start</p>
-        <ul class="m-0 list-disc space-y-2 pl-5 text-sm text-[var(--sea-ink-soft)]">
-          <li>
-            Edit <code>src/routes/index.tsx</code> to customize the home page.
-          </li>
-          <li>
-            Update <code>src/components/Header.tsx</code> for navigation and
-            product links.
-          </li>
-          <li>
-            Add routes in <code>src/routes</code> and tweak visual tokens in{' '}
-            <code>src/styles.css</code>.
-          </li>
-        </ul>
+const starterInput = `\`\`\`fastcap
+[[f]]
+i = "bili_cid"
+id = "37322032240"
+p = [ [ 0, 1371000, 0, 1 ] ]
+
+[f.t.1]
+bgmtv_epid = "1670640"
+\`\`\``
+
+function App() {
+  const [input, setInput] = createSignal(starterInput)
+  const [viewMode, setViewMode] = createSignal<ViewMode>('episode')
+  const [parsed, setParsed] = createSignal<FastCapParseResult>()
+  const [error, setError] = createSignal<string>()
+  const [exportFormat, setExportFormat] = createSignal<'toml' | 'yue'>('toml')
+  const [isParsing, setIsParsing] = createSignal(false)
+  const [metadata, setMetadata] =
+    createSignal<Record<string, FastCapEpisodeMetadata>>()
+  const [isLoadingMetadata, setIsLoadingMetadata] = createSignal(false)
+  let metadataRequestId = 0
+
+  const loadingMessage = createMemo(() =>
+    isParsing()
+      ? '正在解析 fastcap…'
+      : isLoadingMetadata()
+        ? '正在加载剧集信息…'
+        : '',
+  )
+
+  const loadMetadata = async (episodes: Array<FastCapEpisodeRow>) => {
+    const requestId = metadataRequestId + 1
+    metadataRequestId = requestId
+
+    if (!episodes.length) {
+      setMetadata()
+      setIsLoadingMetadata(false)
+      return
+    }
+    setIsLoadingMetadata(true)
+    await waitForPaint()
+
+    const payload = episodes.map((episode) => ({
+      key: episode.key,
+      refs: episode.refs,
+    }))
+
+    try {
+      const result = await getFastCapEpisodeMetadata({
+        data: { episodes: payload },
+      })
+      if (requestId === metadataRequestId) setMetadata(result)
+    } catch (metadataError) {
+      if (requestId !== metadataRequestId) return
+      setMetadata(
+        Object.fromEntries(
+          payload.map((episode) => [
+            episode.key,
+            {
+              key: episode.key,
+              title: fallbackMetadataTitle(episode.refs),
+              subtitle: formatRefs(episode.refs),
+              status: 'fallback',
+              error: `元数据请求失败：${getErrorMessage(metadataError)}`,
+            } satisfies FastCapEpisodeMetadata,
+          ]),
+        ),
+      )
+    } finally {
+      if (requestId === metadataRequestId) setIsLoadingMetadata(false)
+    }
+  }
+
+  const buildFallbackMetadata = (episodes: Array<FastCapEpisodeRow>) =>
+    Object.fromEntries(
+      episodes.map((episode) => [
+        episode.key,
+        {
+          key: episode.key,
+          title: fallbackMetadataTitle(episode.refs),
+          subtitle: formatRefs(episode.refs),
+          status: 'fallback',
+        } satisfies FastCapEpisodeMetadata,
+      ]),
+    )
+
+  const exportText = createMemo(() => {
+    const data = parsed()
+    if (!data) return ''
+    return exportFormat() === 'toml' ? data.toml : data.yue
+  })
+
+  const parseInput = async () => {
+    setIsParsing(true)
+    setError()
+    await waitForPaint()
+
+    try {
+      const result = parseFastCapInput(input())
+      setParsed(result)
+      setMetadata(buildFallbackMetadata(result.episodeRows))
+      setIsParsing(false)
+      void loadMetadata(result.episodeRows)
+    } catch (parseError) {
+      setError(getErrorMessage(parseError))
+      setIsParsing(false)
+    } finally {
+      if (isParsing()) setIsParsing(false)
+    }
+  }
+
+  const copyExport = () => {
+    const text = exportText()
+    if (!text) return
+    void navigator.clipboard.writeText(text)
+  }
+
+  return (
+    <main class="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-4 py-8 lg:px-6">
+      <section class="grid gap-6 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.4fr)]">
+        <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div class="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p class="mb-1 text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
+                FastCap
+              </p>
+              <h1 class="m-0 text-2xl font-semibold tracking-tight text-slate-950">
+                配置查看器
+              </h1>
+            </div>
+            <button
+              type="button"
+              disabled={isParsing()}
+              class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+              onClick={parseInput}
+            >
+              {isParsing() ? '解析中…' : '解析'}
+            </button>
+          </div>
+
+          <textarea
+            value={input()}
+            onInput={(event) => setInput(event.currentTarget.value)}
+            spellcheck={false}
+            class="min-h-[420px] w-full resize-y rounded-md border border-slate-200 bg-slate-50 px-3 py-3 font-mono text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+          />
+
+          <Show when={error()}>
+            {(message) => (
+              <p class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {message()}
+              </p>
+            )}
+          </Show>
+
+          <Show when={parsed()}>
+            {(data) => (
+              <div class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div class="flex rounded-md border border-slate-200 bg-white p-1">
+                    <FormatButton
+                      active={exportFormat() === 'toml'}
+                      onClick={() => setExportFormat('toml')}
+                    >
+                      TOML
+                    </FormatButton>
+                    <FormatButton
+                      active={exportFormat() === 'yue'}
+                      onClick={() => setExportFormat('yue')}
+                    >
+                      Yue
+                    </FormatButton>
+                  </div>
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                    onClick={copyExport}
+                  >
+                    复制导出
+                  </button>
+                </div>
+                <textarea
+                  value={exportText()}
+                  readOnly
+                  spellcheck={false}
+                  class="min-h-48 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-3 font-mono text-xs leading-5 text-slate-800"
+                />
+                <p class="mt-2 text-xs text-slate-500">
+                  规范化导出，不保留原始注释、空行或字段顺序。当前输入识别为{' '}
+                  {data().format.toUpperCase()}。
+                </p>
+              </div>
+            )}
+          </Show>
+        </div>
+
+        <div class="relative min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <Show
+            when={parsed()}
+            fallback={
+              <div class="flex min-h-[560px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                粘贴配置后点击解析。
+              </div>
+            }
+          >
+            {(data) => (
+              <div class="flex min-w-0 flex-col gap-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div class="grid grid-cols-3 gap-2">
+                    <StatCard label="资源" value={data().stats.resources} />
+                    <StatCard label="剧集" value={data().stats.episodes} />
+                    <StatCard label="片段" value={data().stats.clips} />
+                  </div>
+
+                  <div class="flex rounded-md border border-slate-200 bg-slate-50 p-1">
+                    <ModeButton
+                      active={viewMode() === 'episode'}
+                      onClick={() => setViewMode('episode')}
+                    >
+                      依据剧集
+                    </ModeButton>
+                    <ModeButton
+                      active={viewMode() === 'index'}
+                      onClick={() => setViewMode('index')}
+                    >
+                      依据索引
+                    </ModeButton>
+                  </div>
+                </div>
+
+                <Show
+                  when={viewMode() === 'episode'}
+                  fallback={
+                    <IndexTable
+                      rows={data().indexRows}
+                      metadata={metadata()}
+                      loading={isLoadingMetadata()}
+                    />
+                  }
+                >
+                  <EpisodeTable
+                    episodes={data().episodeRows}
+                    metadata={metadata()}
+                    loading={isLoadingMetadata()}
+                  />
+                </Show>
+              </div>
+            )}
+          </Show>
+
+          <Show when={loadingMessage()}>
+            <div class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[2px]">
+              <div class="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
+                <span class="h-3 w-3 animate-pulse rounded-full bg-slate-900" />
+                <span class="text-sm font-medium text-slate-700">
+                  {loadingMessage()}
+                </span>
+              </div>
+            </div>
+          </Show>
+        </div>
       </section>
     </main>
   )
+}
+
+function waitForPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
+function EpisodeTable(props: {
+  episodes: Array<FastCapEpisodeRow>
+  metadata?: Record<string, FastCapEpisodeMetadata>
+  loading: boolean
+}) {
+  return (
+    <div class="overflow-x-auto rounded-lg border border-slate-200">
+      <table class="w-full min-w-[980px] border-collapse text-left text-sm">
+        <thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          <tr>
+            <th class="px-3 py-3">Ep</th>
+            <th class="px-3 py-3">剧集信息</th>
+            <th class="px-3 py-3">索引</th>
+            <th class="px-3 py-3">Clip</th>
+            <th class="px-3 py-3">视频片段</th>
+            <th class="px-3 py-3">真实进度</th>
+            <th class="px-3 py-3">Offset</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.episodes}>
+            {(episode) => (
+              <For each={episode.clips}>
+                {(clip, clipOffset) => (
+                  <tr class="border-t border-slate-200 align-top">
+                    <td class="px-3 py-3 font-mono text-slate-700">
+                      <Show when={clipOffset() === 0}>
+                        {episode.tempEpId}
+                        <span class="ml-1 text-xs text-slate-400">
+                          f{episode.resourceIndex}
+                        </span>
+                      </Show>
+                    </td>
+                    <td class="max-w-72 px-3 py-3">
+                      <Show when={clipOffset() === 0}>
+                        <EpisodeMeta
+                          episode={episode}
+                          metadata={props.metadata?.[episode.key]}
+                          loading={props.loading}
+                        />
+                      </Show>
+                    </td>
+                    <td class="px-3 py-3 font-mono text-xs text-slate-600">
+                      {episode.indexType}:{episode.resourceId}
+                    </td>
+                    <td class="px-3 py-3 font-mono text-slate-700">
+                      {clip.clipIndex}
+                    </td>
+                    <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                      {formatMilliseconds(clip.videoBegin)} →{' '}
+                      {formatMilliseconds(clip.videoEnd)}
+                    </td>
+                    <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                      {formatMilliseconds(clip.realBegin)} →{' '}
+                      {formatMilliseconds(clip.realEnd)}
+                    </td>
+                    <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                      {formatMilliseconds(clip.offset)}
+                    </td>
+                  </tr>
+                )}
+              </For>
+            )}
+          </For>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function IndexTable(props: {
+  rows: Array<FastCapIndexRow>
+  metadata?: Record<string, FastCapEpisodeMetadata>
+  loading: boolean
+}) {
+  return (
+    <div class="overflow-x-auto rounded-lg border border-slate-200">
+      <table class="w-full min-w-[1080px] border-collapse text-left text-sm">
+        <thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          <tr>
+            <th class="px-3 py-3">索引</th>
+            <th class="px-3 py-3">Clip</th>
+            <th class="px-3 py-3">视频片段</th>
+            <th class="px-3 py-3">Ep</th>
+            <th class="px-3 py-3">剧集信息</th>
+            <th class="px-3 py-3">真实进度</th>
+            <th class="px-3 py-3">Offset</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.rows}>
+            {(row) => (
+              <tr class="border-t border-slate-200 align-top">
+                <td class="px-3 py-3 font-mono text-xs text-slate-600">
+                  f{row.resourceIndex} · {row.indexType}:{row.resourceId}
+                </td>
+                <td class="px-3 py-3 font-mono text-slate-700">
+                  p{row.clipIndex}
+                </td>
+                <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                  {formatMilliseconds(row.videoBegin)} →{' '}
+                  {formatMilliseconds(row.videoEnd)}
+                </td>
+                <td class="px-3 py-3 font-mono text-slate-700">
+                  {row.tempEpId}
+                </td>
+                <td class="max-w-72 px-3 py-3">
+                  <EpisodeMeta
+                    episode={{
+                      key: row.episodeKey,
+                      fIndex: row.fIndex,
+                      resourceIndex: row.resourceIndex,
+                      indexType: row.indexType,
+                      resourceId: row.resourceId,
+                      tempEpId: row.tempEpId,
+                      refs: row.refs,
+                      clips: [],
+                    }}
+                    metadata={props.metadata?.[row.episodeKey]}
+                    loading={props.loading}
+                  />
+                </td>
+                <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                  {formatMilliseconds(row.realBegin)} →{' '}
+                  {formatMilliseconds(row.realEnd)}
+                </td>
+                <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                  {formatMilliseconds(row.offset)}
+                </td>
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function EpisodeMeta(props: {
+  episode: FastCapEpisodeRow
+  metadata?: FastCapEpisodeMetadata
+  loading: boolean
+}) {
+  const status = createMemo(() => props.metadata?.status)
+  return (
+    <div>
+      <div class="flex flex-wrap items-center gap-2">
+        <p class="m-0 font-medium text-slate-950">
+          {props.metadata?.title ?? `EP ${props.episode.tempEpId}`}
+        </p>
+        <Show when={props.loading}>
+          <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">
+            加载中
+          </span>
+        </Show>
+        <Show when={status() === 'fallback'}>
+          <span class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
+            降级
+          </span>
+        </Show>
+      </div>
+      <p class="mt-1 mb-0 text-xs text-slate-500">
+        {props.metadata?.subtitle || formatRefs(props.episode.refs)}
+      </p>
+      <Show when={props.metadata?.error}>
+        {(error) => <p class="mt-1 mb-0 text-xs text-amber-700">{error()}</p>}
+      </Show>
+    </div>
+  )
+}
+
+function StatCard(props: { label: string; value: number }) {
+  return (
+    <div class="min-w-20 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+      <p class="m-0 text-xs text-slate-500">{props.label}</p>
+      <p class="m-0 text-xl font-semibold text-slate-950">{props.value}</p>
+    </div>
+  )
+}
+
+function ModeButton(props: {
+  active: boolean
+  onClick: () => void
+  children: string
+}) {
+  return (
+    <button
+      type="button"
+      classList={{
+        'bg-white text-slate-950 shadow-sm': props.active,
+        'text-slate-500 hover:text-slate-900': !props.active,
+      }}
+      class="rounded px-3 py-1.5 text-sm font-semibold transition"
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
+  )
+}
+
+function FormatButton(props: {
+  active: boolean
+  onClick: () => void
+  children: string
+}) {
+  return (
+    <button
+      type="button"
+      classList={{
+        'bg-slate-950 text-white': props.active,
+        'text-slate-500 hover:text-slate-900': !props.active,
+      }}
+      class="rounded px-3 py-1 text-sm font-semibold transition"
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
+  )
+}
+
+function formatRefs(refs: { bgmtv_epid?: string; tmdb_urlc?: string }) {
+  return [
+    refs.bgmtv_epid ? `Bangumi ${refs.bgmtv_epid}` : undefined,
+    refs.tmdb_urlc ? `TMDB ${refs.tmdb_urlc}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function fallbackMetadataTitle(refs: {
+  bgmtv_epid?: string
+  tmdb_urlc?: string
+}) {
+  if (refs.bgmtv_epid) return `Bangumi EP ${refs.bgmtv_epid}`
+  if (refs.tmdb_urlc) return `TMDB ${refs.tmdb_urlc}`
+  return '未提供第三方剧集 ID'
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  return String(error)
 }
