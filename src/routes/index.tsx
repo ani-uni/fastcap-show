@@ -7,6 +7,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   onMount,
 } from 'solid-js'
 
@@ -30,6 +31,7 @@ import type { FastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions
 export const Route = createFileRoute('/')({ component: App })
 
 type ViewMode = 'episode' | 'index'
+type ImageExportFormat = 'png' | 'webp'
 const showImagesStorageKey = 'fastcap-show:show-episode-images'
 
 const getClientEpisodeMetadata = createClientOnlyFn(
@@ -66,6 +68,15 @@ function App() {
   const [metadata, setMetadata] =
     createSignal<Record<string, FastCapEpisodeMetadata>>()
   const [isLoadingMetadata, setIsLoadingMetadata] = createSignal(false)
+  const [isExportingImage, setIsExportingImage] = createSignal(false)
+  const [imageExportError, setImageExportError] = createSignal<string>()
+  const [isImageExportModalOpen, setIsImageExportModalOpen] =
+    createSignal(false)
+  const [imageExportFormat, setImageExportFormat] =
+    createSignal<ImageExportFormat>('png')
+  const [imageExportPreviewUrl, setImageExportPreviewUrl] =
+    createSignal<string>()
+  const [imageExportBlob, setImageExportBlob] = createSignal<Blob>()
   const [showEpisodeImages, setShowEpisodeImages] = createSignal(true)
   let metadataRequestId = 0
 
@@ -73,6 +84,18 @@ function App() {
     const saved = localStorage.getItem(showImagesStorageKey)
     if (saved !== null) setShowEpisodeImages(saved === 'true')
   })
+
+  onCleanup(() => {
+    const previewUrl = imageExportPreviewUrl()
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+  })
+
+  const setImagePreviewBlob = (blob: Blob) => {
+    const previousUrl = imageExportPreviewUrl()
+    if (previousUrl) URL.revokeObjectURL(previousUrl)
+    setImageExportBlob(blob)
+    setImageExportPreviewUrl(URL.createObjectURL(blob))
+  }
 
   const toggleEpisodeImages = (value: boolean) => {
     setShowEpisodeImages(value)
@@ -190,6 +213,53 @@ function App() {
     setMetadata()
     setIsLoadingMetadata(false)
     setExportFormat('toml')
+  }
+
+  const renderImageExportPreview = async (format: ImageExportFormat) => {
+    const data = parsed()
+    if (!data) return
+
+    setIsExportingImage(true)
+    setImageExportError()
+
+    try {
+      const blob = await exportFastCapListAsBlob(
+        data,
+        metadata(),
+        viewMode(),
+        format,
+        showEpisodeImages(),
+      )
+      setImagePreviewBlob(blob)
+      setImageExportFormat(format)
+      setIsImageExportModalOpen(true)
+    } catch (exportError) {
+      setImageExportError(getErrorMessage(exportError))
+    } finally {
+      setIsExportingImage(false)
+    }
+  }
+
+  const openImageExportPreview = () => {
+    void renderImageExportPreview(imageExportFormat())
+  }
+
+  const changeImageExportFormat = (format: ImageExportFormat) => {
+    if (format === imageExportFormat()) return
+    void renderImageExportPreview(format)
+  }
+
+  const closeImageExportModal = () => {
+    setIsImageExportModalOpen(false)
+  }
+
+  const downloadImageExport = () => {
+    const blob = imageExportBlob()
+    if (!blob) return
+    downloadBlob(
+      blob,
+      `fastcap-${viewMode()}-${formatFileTimestamp(new Date())}.${imageExportFormat()}`,
+    )
   }
 
   return (
@@ -335,6 +405,14 @@ function App() {
                       依据索引
                     </ModeButton>
                   </div>
+                  <button
+                    type="button"
+                    disabled={isExportingImage()}
+                    class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    onClick={openImageExportPreview}
+                  >
+                    {isExportingImage() ? '生成中…' : '导出图片'}
+                  </button>
                   <label class="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
                     <input
                       type="checkbox"
@@ -347,24 +425,34 @@ function App() {
                   </label>
                 </div>
 
-                <Show
-                  when={viewMode() === 'episode'}
-                  fallback={
-                    <IndexTable
-                      rows={data().indexRows}
+                <Show when={imageExportError()}>
+                  {(message) => (
+                    <p class="m-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {message()}
+                    </p>
+                  )}
+                </Show>
+
+                <div class="min-w-0 bg-white">
+                  <Show
+                    when={viewMode() === 'episode'}
+                    fallback={
+                      <IndexTable
+                        rows={data().indexRows}
+                        metadata={metadata()}
+                        loading={isLoadingMetadata()}
+                        showImages={showEpisodeImages()}
+                      />
+                    }
+                  >
+                    <EpisodeTable
+                      episodes={data().episodeRows}
                       metadata={metadata()}
                       loading={isLoadingMetadata()}
                       showImages={showEpisodeImages()}
                     />
-                  }
-                >
-                  <EpisodeTable
-                    episodes={data().episodeRows}
-                    metadata={metadata()}
-                    loading={isLoadingMetadata()}
-                    showImages={showEpisodeImages()}
-                  />
-                </Show>
+                  </Show>
+                </div>
 
                 <Show when={draft()}>
                   {(draftData) => (
@@ -395,6 +483,76 @@ function App() {
           </Show>
         </div>
       </section>
+
+      <Show when={isImageExportModalOpen()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 class="m-0 text-lg font-semibold text-slate-950">
+                  导出图片预览
+                </h2>
+                <p class="mt-1 mb-0 text-xs text-slate-500">
+                  当前导出内容：
+                  {viewMode() === 'episode' ? '依据剧集' : '依据索引'}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                onClick={closeImageExportModal}
+              >
+                关闭
+              </button>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
+              <div class="flex rounded-md border border-slate-200 bg-white p-1">
+                <FormatButton
+                  active={imageExportFormat() === 'png'}
+                  onClick={() => changeImageExportFormat('png')}
+                >
+                  PNG
+                </FormatButton>
+                <FormatButton
+                  active={imageExportFormat() === 'webp'}
+                  onClick={() => changeImageExportFormat('webp')}
+                >
+                  WebP
+                </FormatButton>
+              </div>
+
+              <button
+                type="button"
+                disabled={!imageExportBlob() || isExportingImage()}
+                class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={downloadImageExport}
+              >
+                下载 {imageExportFormat().toUpperCase()}
+              </button>
+            </div>
+
+            <div class="min-h-0 overflow-auto bg-slate-100 p-5">
+              <Show
+                when={imageExportPreviewUrl()}
+                fallback={
+                  <div class="flex min-h-64 items-center justify-center text-sm text-slate-500">
+                    正在生成预览…
+                  </div>
+                }
+              >
+                {(previewUrl) => (
+                  <img
+                    src={previewUrl()}
+                    alt="导出图片预览"
+                    class="mx-auto max-w-full rounded-lg border border-slate-200 bg-white shadow-sm"
+                  />
+                )}
+              </Show>
+            </div>
+          </div>
+        </div>
+      </Show>
     </main>
   )
 }
@@ -405,6 +563,411 @@ function waitForPaint() {
       requestAnimationFrame(() => resolve())
     })
   })
+}
+
+type CanvasTableColumn = {
+  title: string
+  width: number
+}
+
+type CanvasCell = {
+  text: string
+  imageUrl?: string
+}
+
+type CanvasTable = {
+  title: string
+  subtitle: string
+  columns: Array<CanvasTableColumn>
+  rows: Array<Array<CanvasCell>>
+}
+
+async function exportFastCapListAsBlob(
+  result: FastCapParseResult,
+  metadata: Record<string, FastCapEpisodeMetadata> | undefined,
+  mode: ViewMode,
+  format: ImageExportFormat,
+  showImages: boolean,
+) {
+  await document.fonts.ready
+
+  const table =
+    mode === 'episode'
+      ? buildEpisodeCanvasTable(result, metadata, showImages)
+      : buildIndexCanvasTable(result, metadata, showImages)
+  if (!table.rows.length) throw new Error('没有可导出的列表内容')
+
+  return renderCanvasTableToBlob(table, format)
+}
+
+function buildEpisodeCanvasTable(
+  result: FastCapParseResult,
+  metadata: Record<string, FastCapEpisodeMetadata> | undefined,
+  showImages: boolean,
+): CanvasTable {
+  return {
+    title: 'FastCap 配置 · 依据剧集',
+    subtitle: formatExportStats(result),
+    columns: [
+      { title: 'Ep', width: 80 },
+      { title: '剧集信息', width: 340 },
+      { title: '索引', width: 220 },
+      { title: 'Clip', width: 70 },
+      { title: '视频片段', width: 210 },
+      { title: '真实进度', width: 210 },
+      { title: 'Offset', width: 140 },
+    ],
+    rows: result.episodeRows.flatMap((episode) => {
+      const episodeMetadata = metadata?.[episode.key]
+      const baseCells = [
+        canvasCell(`${episode.tempEpId}\nf${episode.resourceIndex}`),
+        canvasCell(formatExportEpisodeMeta(episode, episodeMetadata), {
+          imageUrl: showImages ? episodeMetadata?.imageUrl : undefined,
+        }),
+        canvasCell(`${episode.indexType}:${episode.resourceId}`),
+      ]
+
+      if (!episode.clips.length) {
+        return [
+          [
+            ...baseCells,
+            canvasCell('无片段'),
+            canvasCell('—'),
+            canvasCell('—'),
+            canvasCell('—'),
+          ],
+        ]
+      }
+
+      return episode.clips.map((clip) => [
+        ...baseCells,
+        canvasCell(String(clip.clipIndex)),
+        canvasCell(
+          `${formatMilliseconds(clip.videoBegin)} →\n${formatMilliseconds(clip.videoEnd)}`,
+        ),
+        canvasCell(
+          `${formatMilliseconds(clip.realBegin)} →\n${formatMilliseconds(clip.realEnd)}`,
+        ),
+        canvasCell(formatMilliseconds(clip.offset)),
+      ])
+    }),
+  }
+}
+
+function buildIndexCanvasTable(
+  result: FastCapParseResult,
+  metadata: Record<string, FastCapEpisodeMetadata> | undefined,
+  showImages: boolean,
+): CanvasTable {
+  return {
+    title: 'FastCap 配置 · 依据索引',
+    subtitle: formatExportStats(result),
+    columns: [
+      { title: '索引', width: 250 },
+      { title: 'Clip', width: 70 },
+      { title: '视频片段', width: 210 },
+      { title: 'Ep', width: 70 },
+      { title: '剧集信息', width: 350 },
+      { title: '真实进度', width: 210 },
+      { title: 'Offset', width: 140 },
+    ],
+    rows: result.indexRows.map((row) => {
+      const episodeMetadata = metadata?.[row.episodeKey]
+      return [
+        canvasCell(`f${row.resourceIndex}\n${row.indexType}:${row.resourceId}`),
+        canvasCell(`p${row.clipIndex}`),
+        canvasCell(
+          `${formatMilliseconds(row.videoBegin)} →\n${formatMilliseconds(row.videoEnd)}`,
+        ),
+        canvasCell(String(row.tempEpId)),
+        canvasCell(
+          formatExportEpisodeMeta(
+            {
+              key: row.episodeKey,
+              fIndex: row.fIndex,
+              resourceIndex: row.resourceIndex,
+              indexType: row.indexType,
+              resourceId: row.resourceId,
+              tempEpId: row.tempEpId,
+              refs: row.refs,
+              clips: [],
+            },
+            episodeMetadata,
+          ),
+          {
+            imageUrl: showImages ? episodeMetadata?.imageUrl : undefined,
+          },
+        ),
+        canvasCell(
+          `${formatMilliseconds(row.realBegin)} →\n${formatMilliseconds(row.realEnd)}`,
+        ),
+        canvasCell(formatMilliseconds(row.offset)),
+      ]
+    }),
+  }
+}
+
+function canvasCell(text: string, options?: { imageUrl?: string }): CanvasCell {
+  return {
+    text,
+    imageUrl: options?.imageUrl,
+  }
+}
+
+async function renderCanvasTableToBlob(
+  table: CanvasTable,
+  format: ImageExportFormat,
+) {
+  const padding = 32
+  const titleHeight = 72
+  const headerHeight = 42
+  const rowPaddingY = 12
+  const lineHeight = 18
+  const columnGap = 0
+  const tableWidth =
+    table.columns.reduce((sum, column) => sum + column.width, 0) +
+    columnGap * (table.columns.length - 1)
+  const width = tableWidth + padding * 2
+
+  const measureCanvas = document.createElement('canvas')
+  const measureContext = measureCanvas.getContext('2d')
+  if (!measureContext) throw new Error('当前浏览器不支持 Canvas 导出')
+
+  measureContext.font = '13px Inter, system-ui, sans-serif'
+  const wrappedRows = table.rows.map((row) =>
+    row.map((cell, index) =>
+      wrapCanvasText(
+        measureContext,
+        cell.text,
+        table.columns[index].width - 24 - (cell.imageUrl ? 54 : 0),
+      ),
+    ),
+  )
+  const rowHeights = wrappedRows.map((row) => {
+    const maxLines = Math.max(...row.map((cell) => cell.length), 1)
+    return Math.max(48, maxLines * lineHeight + rowPaddingY * 2)
+  })
+  const exportImages = await loadExportImages(table)
+  const height =
+    padding * 2 +
+    titleHeight +
+    headerHeight +
+    rowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0)
+
+  const scale = Math.min(window.devicePixelRatio || 1, 2)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(width * scale)
+  canvas.height = Math.ceil(height * scale)
+
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('当前浏览器不支持 Canvas 导出')
+
+  context.scale(scale, scale)
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, width, height)
+
+  context.fillStyle = '#020617'
+  context.font = '700 24px Inter, system-ui, sans-serif'
+  context.fillText(table.title, padding, padding + 24)
+  context.fillStyle = '#64748b'
+  context.font = '13px Inter, system-ui, sans-serif'
+  context.fillText(table.subtitle, padding, padding + 50)
+
+  let y = padding + titleHeight
+  let x = padding
+  context.fillStyle = '#f8fafc'
+  context.fillRect(padding, y, tableWidth, headerHeight)
+  context.strokeStyle = '#e2e8f0'
+  context.strokeRect(padding, y, tableWidth, headerHeight)
+
+  table.columns.forEach((column) => {
+    context.fillStyle = '#475569'
+    context.font = '700 12px Inter, system-ui, sans-serif'
+    context.fillText(column.title, x + 12, y + 26)
+    context.strokeStyle = '#e2e8f0'
+    context.beginPath()
+    context.moveTo(x + column.width, y)
+    context.lineTo(x + column.width, y + headerHeight)
+    context.stroke()
+    x += column.width
+  })
+  y += headerHeight
+
+  wrappedRows.forEach((row, rowIndex) => {
+    const rowHeight = rowHeights[rowIndex]
+    context.fillStyle = rowIndex % 2 === 0 ? '#ffffff' : '#f8fafc'
+    context.fillRect(padding, y, tableWidth, rowHeight)
+    context.strokeStyle = '#e2e8f0'
+    context.strokeRect(padding, y, tableWidth, rowHeight)
+
+    x = padding
+    row.forEach((lines, columnIndex) => {
+      const cell = table.rows[rowIndex][columnIndex]
+      const column = table.columns[columnIndex]
+      context.fillStyle = '#334155'
+      context.font = '13px Inter, system-ui, sans-serif'
+      let textX = x + 12
+      const image = cell.imageUrl ? exportImages.get(cell.imageUrl) : undefined
+      if (image) {
+        const imageSize = Math.min(42, rowHeight - rowPaddingY * 2)
+        context.save()
+        roundedRect(context, x + 12, y + rowPaddingY, imageSize, imageSize, 6)
+        context.clip()
+        context.drawImage(image, x + 12, y + rowPaddingY, imageSize, imageSize)
+        context.restore()
+        textX += imageSize + 12
+      }
+      lines.forEach((line, lineIndex) => {
+        context.fillText(
+          line,
+          textX,
+          y + rowPaddingY + 14 + lineIndex * lineHeight,
+        )
+      })
+      context.strokeStyle = '#e2e8f0'
+      context.beginPath()
+      context.moveTo(x + column.width, y)
+      context.lineTo(x + column.width, y + rowHeight)
+      context.stroke()
+      x += column.width
+    })
+
+    y += rowHeight
+  })
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('图片导出失败'))
+    }, `image/${format}`)
+  })
+}
+
+async function loadExportImages(table: CanvasTable) {
+  const urls = Array.from(
+    new Set(
+      table.rows
+        .flatMap((row) => row.map((cell) => cell.imageUrl))
+        .filter((url): url is string => Boolean(url)),
+    ),
+  )
+  const entries = await Promise.all(
+    urls.map(async (url) => {
+      const image = await loadCorsImage(url).catch(() => undefined)
+      return [url, image] as const
+    }),
+  )
+
+  return new Map(
+    entries.filter(
+      (entry): entry is readonly [string, HTMLImageElement] =>
+        entry[1] !== undefined,
+    ),
+  )
+}
+
+function loadCorsImage(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.referrerPolicy = 'no-referrer'
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('图片不允许跨域导出'))
+    image.src = url
+  })
+}
+
+function roundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  context.beginPath()
+  context.moveTo(x + radius, y)
+  context.lineTo(x + width - radius, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + radius)
+  context.lineTo(x + width, y + height - radius)
+  context.quadraticCurveTo(
+    x + width,
+    y + height,
+    x + width - radius,
+    y + height,
+  )
+  context.lineTo(x + radius, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - radius)
+  context.lineTo(x, y + radius)
+  context.quadraticCurveTo(x, y, x + radius, y)
+  context.closePath()
+}
+
+function wrapCanvasText(
+  context: CanvasRenderingContext2D,
+  value: string,
+  maxWidth: number,
+) {
+  const lines: Array<string> = []
+  value.split('\n').forEach((paragraph) => {
+    const characters = Array.from(paragraph || ' ')
+    let line = ''
+
+    characters.forEach((character) => {
+      const next = `${line}${character}`
+      if (line && context.measureText(next).width > maxWidth) {
+        lines.push(line)
+        line = character
+      } else {
+        line = next
+      }
+    })
+
+    lines.push(line)
+  })
+
+  return lines
+}
+
+function formatExportStats(result: FastCapParseResult) {
+  return `资源 ${result.stats.resources} · 剧集 ${result.stats.episodes} · 片段 ${result.stats.clips} · ${new Date().toLocaleString()}`
+}
+
+function formatExportEpisodeMeta(
+  episode: FastCapEpisodeRow,
+  metadata?: FastCapEpisodeMetadata,
+) {
+  return [
+    metadata?.title ?? `EP ${episode.tempEpId}`,
+    formatEpisodeDetails(metadata),
+    metadata?.subtitle || formatRefs(episode.refs),
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function formatFileTimestamp(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    '-',
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join('')
 }
 
 function toMetadataPayload(episode: FastCapEpisodeRow) {
@@ -1116,6 +1679,8 @@ function EpisodeMeta(props: {
           <img
             src={imageUrl()}
             alt=""
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
             loading="lazy"
             class="h-20 w-14 flex-none rounded border border-slate-200 object-cover"
           />
