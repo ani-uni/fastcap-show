@@ -231,6 +231,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.3.3(@voidzero-dev/vite-plus-core@0.2.6(jiti@2.7.0)(typescript@6.0.3))
+      '@tanstack/highlight':
+        specifier: ^0.0.5
+        version: 0.0.5
       '@tanstack/solid-form':
         specifier: latest
         version: 1.33.2(solid-js@1.9.14)
@@ -1173,6 +1176,10 @@ packages:
 
   '@tanstack/form-core@1.33.2':
     resolution: {integrity: sha512-F60zJd15bGrXKonc1kpRYnNRNfiES7F+hgvrPMrsZznPLqZtO2DIg76OU6R25kCYkqYQY5xvuKteuWcUsc587A==}
+
+  '@tanstack/highlight@0.0.5':
+    resolution: {integrity: sha512-6LMGn2FUrOUITLm5qbQdO2SAB4QrnZQ8O1pUiYYQyp8t60B5F3YIjTAMkpFKGtiZmyhmdzAuOZG6KPkeNYomfQ==}
+    engines: {node: '>=18'}
 
   '@tanstack/history@1.162.0':
     resolution: {integrity: sha512-79pf/RkhteYZTRgcR4F9kbk84P2N8rugQJswxfIqovlbRiT3yI7eBE+5QorIrZaOKktsgzRlXh1l/du/xpl4iA==}
@@ -3254,6 +3261,8 @@ snapshots:
       '@tanstack/devtools-event-client': 0.4.4
       '@tanstack/pacer-lite': 0.1.1
       '@tanstack/store': 0.11.0
+
+  '@tanstack/highlight@0.0.5': {}
 
   '@tanstack/history@1.162.0': {}
 
