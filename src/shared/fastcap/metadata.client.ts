@@ -1,54 +1,13 @@
-import { createServerFn } from '@tanstack/solid-start'
-import { z } from 'zod'
-
 import { BgmTv } from '../3rd-ref/bgmtv'
 import { TMDB, parseTMDBUrlC } from '../3rd-ref/tmdb'
+import type { FastCapEpisodeMetadata } from './metadata.functions'
 
-const EpisodeMetadataRequestSchema = z.object({
-  episodes: z.array(
-    z.object({
-      key: z.string(),
-      refs: z.object({
-        bgmtv_epid: z.string().optional(),
-        tmdb_urlc: z.string().optional(),
-      }),
-    }),
-  ),
-})
-
-export type FastCapEpisodeMetadata = {
-  key: string
-  title: string
-  subtitle?: string
-  source?: 'bgmtv' | 'tmdb'
-  status: 'resolved' | 'fallback'
-  error?: string
-}
-
-export const getFastCapEpisodeMetadata = createServerFn({ method: 'POST' })
-  .validator((data: z.input<typeof EpisodeMetadataRequestSchema>) =>
-    EpisodeMetadataRequestSchema.parse(data),
-  )
-  .handler(async ({ data }) => {
-    const bgmtv = new BgmTv()
-    const tmdb = TMDB.init()
-
-    const entries = await Promise.all(
-      data.episodes.map(async (episode) => [
-        episode.key,
-        await resolveEpisodeMetadata(episode.key, episode.refs, bgmtv, tmdb),
-      ]),
-    )
-
-    return Object.fromEntries(entries) as Record<string, FastCapEpisodeMetadata>
-  })
-
-async function resolveEpisodeMetadata(
+export async function getFastCapEpisodeMetadataClient(
   key: string,
   refs: { bgmtv_epid?: string; tmdb_urlc?: string },
-  bgmtv: BgmTv,
-  tmdb: TMDB,
-): Promise<FastCapEpisodeMetadata> {
+) {
+  const bgmtv = new BgmTv()
+  const tmdb = new TMDB()
   const failures: Array<string> = []
 
   if (refs.bgmtv_epid) {
@@ -69,9 +28,9 @@ async function resolveEpisodeMetadata(
           .join(' · '),
         source: 'bgmtv',
         status: 'resolved',
-      }
+      } satisfies FastCapEpisodeMetadata
     } catch (error) {
-      failures.push(`Bangumi: ${getErrorMessage(error)}`)
+      failures.push(`Bangumi client: ${getErrorMessage(error)}`)
     }
   }
 
@@ -93,7 +52,7 @@ async function resolveEpisodeMetadata(
             .join(' · '),
           source: 'tmdb',
           status: 'resolved',
-        }
+        } satisfies FastCapEpisodeMetadata
       }
 
       if (parsed?.movie_id !== undefined) {
@@ -113,26 +72,16 @@ async function resolveEpisodeMetadata(
             .join(' · '),
           source: 'tmdb',
           status: 'resolved',
-        }
+        } satisfies FastCapEpisodeMetadata
       }
 
-      failures.push('TMDB: 不支持的 tmdb_urlc')
+      failures.push('TMDB client: 不支持的 tmdb_urlc')
     } catch (error) {
-      failures.push(`TMDB: ${getErrorMessage(error)}`)
+      failures.push(`TMDB client: ${getErrorMessage(error)}`)
     }
   }
 
-  return {
-    key,
-    title: refs.bgmtv_epid
-      ? `Bangumi EP ${refs.bgmtv_epid}`
-      : refs.tmdb_urlc
-        ? `TMDB ${refs.tmdb_urlc}`
-        : '未提供第三方剧集 ID',
-    subtitle: [refs.bgmtv_epid, refs.tmdb_urlc].filter(Boolean).join(' · '),
-    status: 'fallback',
-    error: failures.join('；') || '没有可用的第三方剧集信息',
-  }
+  throw new Error(failures.join('；') || '没有可用的 client 元数据请求')
 }
 
 function getErrorMessage(error: unknown) {

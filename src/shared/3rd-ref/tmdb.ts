@@ -1,6 +1,4 @@
 import ky from 'ky'
-import { HTTPError } from 'nitro/h3'
-import { useStorage } from 'nitro/storage'
 import z from 'zod'
 
 import { headers } from '../headers'
@@ -516,7 +514,7 @@ export class TMDB {
       api_key: this.api_key,
     }
   }
-  static async init(
+  static init(
     /**
      * 传入数据创建临时实例(overlay)
      */
@@ -524,22 +522,13 @@ export class TMDB {
   ) {
     const tmdb = new TMDB()
     if (data) data = TMDBConfigSchema.parse(data)
-    const storage = useStorage('tmdb')
-    const url = await storage.get<string>('api_url')
-    const key = await storage.get<string>('api_key')
-    if (url) tmdb.api_url = new URL(url)
-    if (key) tmdb.api_key = key
     if (data?.api_url) tmdb.api_url = new URL(data.api_url)
     if (data?.api_key) tmdb.api_key = data.api_key
     return tmdb
   }
-  static async setConfig(data: z.infer<typeof TMDBConfigSchema>) {
+  static setConfig(data: z.infer<typeof TMDBConfigSchema>) {
     data = TMDBConfigSchema.parse(data)
-    const storage = useStorage('tmdb')
-    // 设置null重置为默认值
-    if (data.api_url !== undefined) await storage.set('api_url', data.api_url)
-    if (data.api_key !== undefined) await storage.set('api_key', data.api_key)
-    return TMDB.init()
+    return TMDB.init(data)
   }
   kyInstance() {
     const hds = headers.get('app')
@@ -571,10 +560,7 @@ export class TMDB {
   private check_input_of_getTVEpisodeInfo(i: string) {
     const c = parseTMDBUrlC(i)
     if (c?.episode_number !== undefined) return c
-    else
-      throw new HTTPError('Invalid input for getTVEpisodeInfo', {
-        statusCode: 400,
-      })
+    else throw new Error('Invalid input for getTVEpisodeInfo')
   }
   async getTVEpisodeInfo(
     input: string | ReturnType<typeof this.check_input_of_getTVEpisodeInfo>,
@@ -602,10 +588,7 @@ export class TMDB {
   private check_input_of_getMovieInfo(i: string) {
     const c = parseTMDBUrlC(i)
     if (c?.movie_id !== undefined) return c
-    else
-      throw new HTTPError('Invalid input for getMovieInfo', {
-        statusCode: 400,
-      })
+    else throw new Error('Invalid input for getMovieInfo')
   }
   async getMovieInfo(
     input: string | ReturnType<typeof this.check_input_of_getMovieInfo>,
@@ -625,10 +608,7 @@ export class TMDB {
   private check_input_of_getTVSeasonInfo(i: string) {
     const c = parseTMDBUrlC(i)
     if (c?.season_number !== undefined) return c
-    else
-      throw new HTTPError('Invalid input for getTVSeasonInfo', {
-        statusCode: 400,
-      })
+    else throw new Error('Invalid input for getTVSeasonInfo')
   }
   async getTVSeasonInfo(
     input: string | ReturnType<typeof this.check_input_of_getTVSeasonInfo>,
@@ -654,10 +634,7 @@ export class TMDB {
   private check_input_of_getTVSeriesInfo(i: string) {
     const c = parseTMDBUrlC(i)
     if (c?.series_id !== undefined) return c
-    else
-      throw new HTTPError('Invalid input for getTVSeriesInfo', {
-        statusCode: 400,
-      })
+    else throw new Error('Invalid input for getTVSeriesInfo')
   }
   async getTVSeriesInfo(
     input: string | ReturnType<typeof this.check_input_of_getTVSeriesInfo>,

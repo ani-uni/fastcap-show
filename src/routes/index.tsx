@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/solid-router'
+import { createClientOnlyFn } from '@tanstack/solid-start'
 import { For, Show, createMemo, createSignal } from 'solid-js'
 
 import { formatMilliseconds, parseFastCapInput } from '~/shared/fastcap/model'
@@ -13,6 +14,14 @@ import type { FastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions
 export const Route = createFileRoute('/')({ component: App })
 
 type ViewMode = 'episode' | 'index'
+
+const getClientEpisodeMetadata = createClientOnlyFn(
+  async (episode: ReturnType<typeof toMetadataPayload>) => {
+    const { getFastCapEpisodeMetadataClient } =
+      await import('~/shared/fastcap/metadata.client')
+    return getFastCapEpisodeMetadataClient(episode.key, episode.refs)
+  },
+)
 
 const starterInput = `\`\`\`fastcap
 [[f]]
@@ -56,32 +65,19 @@ function App() {
     setIsLoadingMetadata(true)
     await waitForPaint()
 
-    const payload = episodes.map((episode) => ({
-      key: episode.key,
-      refs: episode.refs,
-    }))
+    const payload = episodes.map(toMetadataPayload)
 
     try {
-      const result = await getFastCapEpisodeMetadata({
-        data: { episodes: payload },
-      })
-      if (requestId === metadataRequestId) setMetadata(result)
-    } catch (metadataError) {
-      if (requestId !== metadataRequestId) return
-      setMetadata(
-        Object.fromEntries(
-          payload.map((episode) => [
-            episode.key,
-            {
-              key: episode.key,
-              title: fallbackMetadataTitle(episode.refs),
-              subtitle: formatRefs(episode.refs),
-              status: 'fallback',
-              error: `元数据请求失败：${getErrorMessage(metadataError)}`,
-            } satisfies FastCapEpisodeMetadata,
-          ]),
-        ),
+      const entries = await Promise.all(
+        payload.map(async (episode) => [
+          episode.key,
+          await resolveMetadataClientFirst(episode),
+        ]),
       )
+
+      if (requestId === metadataRequestId) {
+        setMetadata(Object.fromEntries(entries))
+      }
     } finally {
       if (requestId === metadataRequestId) setIsLoadingMetadata(false)
     }
@@ -89,15 +85,18 @@ function App() {
 
   const buildFallbackMetadata = (episodes: Array<FastCapEpisodeRow>) =>
     Object.fromEntries(
-      episodes.map((episode) => [
-        episode.key,
-        {
-          key: episode.key,
-          title: fallbackMetadataTitle(episode.refs),
-          subtitle: formatRefs(episode.refs),
-          status: 'fallback',
-        } satisfies FastCapEpisodeMetadata,
-      ]),
+      episodes.map((episode) => {
+        const payload = toMetadataPayload(episode)
+        return [
+          episode.key,
+          {
+            key: payload.key,
+            title: fallbackMetadataTitle(payload.refs),
+            subtitle: formatRefs(payload.refs),
+            status: 'fallback',
+          } satisfies FastCapEpisodeMetadata,
+        ]
+      }),
     )
 
   const exportText = createMemo(() => {
@@ -286,6 +285,48 @@ function waitForPaint() {
       requestAnimationFrame(() => resolve())
     })
   })
+}
+
+function toMetadataPayload(episode: FastCapEpisodeRow) {
+  return {
+    key: episode.key,
+    refs: episode.refs,
+  }
+}
+
+async function resolveMetadataClientFirst(
+  episode: ReturnType<typeof toMetadataPayload>,
+) {
+  try {
+    return await getClientEpisodeMetadata(episode)
+  } catch (clientError) {
+    try {
+      const result = await getFastCapEpisodeMetadata({
+        data: { episodes: [episode] },
+      })
+      return result[episode.key] ?? fallbackMetadata(episode, clientError)
+    } catch (serverError) {
+      return fallbackMetadata(
+        episode,
+        `client: ${getErrorMessage(clientError)}；server: ${getErrorMessage(
+          serverError,
+        )}`,
+      )
+    }
+  }
+}
+
+function fallbackMetadata(
+  episode: ReturnType<typeof toMetadataPayload>,
+  error?: unknown,
+) {
+  return {
+    key: episode.key,
+    title: fallbackMetadataTitle(episode.refs),
+    subtitle: formatRefs(episode.refs),
+    status: 'fallback',
+    error: error ? getErrorMessage(error) : undefined,
+  } satisfies FastCapEpisodeMetadata
 }
 
 function EpisodeTable(props: {
