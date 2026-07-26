@@ -1,0 +1,53 @@
+{
+  "name": "fastcap-show",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --port 3000",
+    "generate-routes": "tsr generate",
+    "build": "vp build",
+    "start": "node .output/server/index.mjs",
+    "preview": "vp preview",
+    "lint": "vp lint",
+    "format": "vp fmt . && vp lint --fix",
+    "check": "vp fmt --check .",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.1.1",
+    "@sentry/solid": "^10.67.0",
+    "@t3-oss/env-core": "^0.13.10",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/solid-form": "latest",
+    "@tanstack/solid-query": "latest",
+    "@tanstack/solid-query-devtools": "latest",
+    "@tanstack/solid-router": "latest",
+    "@tanstack/solid-router-devtools": "latest",
+    "@tanstack/solid-start": "latest",
+    "@tanstack/solid-store": "latest",
+    "@tanstack/store": "latest",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "nitro": "3.0.260610-beta",
+    "solid-js": "^1.9.12",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss": "^4.1.18",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tanstack/devtools-vite": "latest",
+    "@tanstack/router-cli": "^1.133.21",
+    "typescript": "^6.0.2",
+    "vite": "catalog:",
+    "vite-plugin-solid": "^2.11.12",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.17.0",
+      "onFail": "download"
+    }
+  }
+}
