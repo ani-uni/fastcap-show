@@ -33,6 +33,9 @@ export const Route = createFileRoute('/')({ component: App })
 type ViewMode = 'episode' | 'index'
 type ImageExportFormat = 'png' | 'webp'
 const showImagesStorageKey = 'fastcap-show:show-episode-images'
+const viewModeStorageKey = 'fastcap-show:view-mode'
+const imageExportFormatStorageKey = 'fastcap-show:image-export-format'
+const editorCollapsedStorageKey = 'fastcap-show:editor-collapsed'
 
 const getClientEpisodeMetadata = createClientOnlyFn(
   async (episode: ReturnType<typeof toMetadataPayload>) => {
@@ -54,6 +57,14 @@ bgmtv_epid = "1670640"
 
 function createEmptyFastCapDraft(): FastCapJson {
   return { f: [] }
+}
+
+function isViewMode(value: string | null): value is ViewMode {
+  return value === 'episode' || value === 'index'
+}
+
+function isImageExportFormat(value: string | null): value is ImageExportFormat {
+  return value === 'png' || value === 'webp'
 }
 
 function App() {
@@ -78,11 +89,29 @@ function App() {
     createSignal<string>()
   const [imageExportBlob, setImageExportBlob] = createSignal<Blob>()
   const [showEpisodeImages, setShowEpisodeImages] = createSignal(true)
+  const [isEditorCollapsed, setIsEditorCollapsed] = createSignal(false)
   let metadataRequestId = 0
 
   onMount(() => {
-    const saved = localStorage.getItem(showImagesStorageKey)
-    if (saved !== null) setShowEpisodeImages(saved === 'true')
+    const savedShowImages = localStorage.getItem(showImagesStorageKey)
+    if (savedShowImages !== null) {
+      setShowEpisodeImages(savedShowImages === 'true')
+    }
+
+    const savedViewMode = localStorage.getItem(viewModeStorageKey)
+    if (isViewMode(savedViewMode)) setViewMode(savedViewMode)
+
+    const savedImageExportFormat = localStorage.getItem(
+      imageExportFormatStorageKey,
+    )
+    if (isImageExportFormat(savedImageExportFormat)) {
+      setImageExportFormat(savedImageExportFormat)
+    }
+
+    const savedEditorCollapsed = localStorage.getItem(editorCollapsedStorageKey)
+    if (savedEditorCollapsed !== null) {
+      setIsEditorCollapsed(savedEditorCollapsed === 'true')
+    }
   })
 
   onCleanup(() => {
@@ -100,6 +129,17 @@ function App() {
   const toggleEpisodeImages = (value: boolean) => {
     setShowEpisodeImages(value)
     localStorage.setItem(showImagesStorageKey, String(value))
+  }
+
+  const selectViewMode = (value: ViewMode) => {
+    setViewMode(value)
+    localStorage.setItem(viewModeStorageKey, value)
+  }
+
+  const toggleEditorCollapsed = () => {
+    const next = !isEditorCollapsed()
+    setIsEditorCollapsed(next)
+    localStorage.setItem(editorCollapsedStorageKey, String(next))
   }
 
   const mergeMetadata = (item: FastCapEpisodeMetadata) => {
@@ -232,6 +272,7 @@ function App() {
       )
       setImagePreviewBlob(blob)
       setImageExportFormat(format)
+      localStorage.setItem(imageExportFormatStorageKey, format)
       setIsImageExportModalOpen(true)
     } catch (exportError) {
       setImageExportError(getErrorMessage(exportError))
@@ -371,7 +412,9 @@ function App() {
                     <FastCapEditor
                       draft={draftData()}
                       error={editorError()}
+                      collapsed={isEditorCollapsed()}
                       onApply={applyDraft}
+                      onToggleCollapsed={toggleEditorCollapsed}
                       onChange={(next) => {
                         setDraft(next)
                         setEditorError()
@@ -394,13 +437,13 @@ function App() {
                   <div class="flex rounded-md border border-slate-200 bg-slate-50 p-1">
                     <ModeButton
                       active={viewMode() === 'episode'}
-                      onClick={() => setViewMode('episode')}
+                      onClick={() => selectViewMode('episode')}
                     >
                       依据剧集
                     </ModeButton>
                     <ModeButton
                       active={viewMode() === 'index'}
-                      onClick={() => setViewMode('index')}
+                      onClick={() => selectViewMode('index')}
                     >
                       依据索引
                     </ModeButton>
@@ -459,7 +502,9 @@ function App() {
                     <FastCapEditor
                       draft={draftData()}
                       error={editorError()}
+                      collapsed={isEditorCollapsed()}
                       onApply={applyDraft}
+                      onToggleCollapsed={toggleEditorCollapsed}
                       onChange={(next) => {
                         setDraft(next)
                         setEditorError()
@@ -1015,7 +1060,9 @@ function fallbackMetadata(
 function FastCapEditor(props: {
   draft: FastCapJson
   error?: string
+  collapsed: boolean
   onApply: () => void
+  onToggleCollapsed: () => void
   onChange: (next: FastCapJson) => void
 }) {
   const updateResource = (
@@ -1054,60 +1101,98 @@ function FastCapEditor(props: {
   return (
     <div class="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 class="m-0 text-lg font-semibold text-slate-950">可视化编辑器</h2>
-          <p class="mt-1 mb-0 text-xs text-slate-500">
-            改动保存在草稿中，点击应用后才会更新配置文本和表格。
-          </p>
+        <div class="flex min-w-0 items-start gap-2">
+          <button
+            type="button"
+            aria-label={
+              props.collapsed ? '展开可视化编辑器' : '折叠可视化编辑器'
+            }
+            title={props.collapsed ? '展开' : '折叠'}
+            class="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+            onClick={props.onToggleCollapsed}
+          >
+            <ChevronDown
+              class="h-4 w-4 transition-transform"
+              collapsed={props.collapsed}
+            />
+          </button>
+          <div class="min-w-0">
+            <h2 class="m-0 text-lg font-semibold text-slate-950">
+              可视化编辑器
+            </h2>
+            <p class="mt-1 mb-0 text-xs text-slate-500">
+              改动保存在草稿中，点击应用后才会更新配置文本和表格。
+            </p>
+          </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
-            onClick={addResource}
-          >
-            新增资源
-          </button>
-          <button
-            type="button"
-            class="rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-            onClick={props.onApply}
-          >
-            应用到配置
-          </button>
+          <Show when={!props.collapsed}>
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+              onClick={addResource}
+            >
+              新增资源
+            </button>
+            <button
+              type="button"
+              class="rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              onClick={props.onApply}
+            >
+              应用到配置
+            </button>
+          </Show>
         </div>
       </div>
 
-      <Show when={props.error}>
-        {(message) => (
-          <p class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {message()}
-          </p>
-        )}
-      </Show>
-
-      <div class="flex flex-col gap-4">
-        <Show
-          when={props.draft.f.length > 0}
-          fallback={
-            <div class="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-              还没有资源。点击“新增资源”开始创建 fastcap 配置。
-            </div>
-          }
-        >
-          <Index each={props.draft.f}>
-            {(resource, resourceIndex) => (
-              <ResourceEditor
-                resource={resource()}
-                resourceIndex={resourceIndex}
-                onChange={(next) => updateResource(resourceIndex, () => next)}
-                onDelete={() => deleteResource(resourceIndex)}
-              />
-            )}
-          </Index>
+      <Show when={!props.collapsed}>
+        <Show when={props.error}>
+          {(message) => (
+            <p class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {message()}
+            </p>
+          )}
         </Show>
-      </div>
+
+        <div class="flex flex-col gap-4">
+          <Show
+            when={props.draft.f.length > 0}
+            fallback={
+              <div class="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                还没有资源。点击“新增资源”开始创建 fastcap 配置。
+              </div>
+            }
+          >
+            <Index each={props.draft.f}>
+              {(resource, resourceIndex) => (
+                <ResourceEditor
+                  resource={resource()}
+                  resourceIndex={resourceIndex}
+                  onChange={(next) => updateResource(resourceIndex, () => next)}
+                  onDelete={() => deleteResource(resourceIndex)}
+                />
+              )}
+            </Index>
+          </Show>
+        </div>
+      </Show>
     </div>
+  )
+}
+
+function ChevronDown(props: { class: string; collapsed: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      class={props.class}
+      classList={{ '-rotate-90': props.collapsed }}
+    >
+      <path
+        fill="currentColor"
+        d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+      />
+    </svg>
   )
 }
 
