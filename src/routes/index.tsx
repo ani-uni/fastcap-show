@@ -152,6 +152,52 @@ function createEmptyFastCapDraft(): FastCapJson {
   return { f: [] }
 }
 
+function createEmptyEpisodeRef() {
+  return {
+    bgmtv_epid: '',
+    tmdb_urlc: '',
+  }
+}
+
+function normalizeFastCapDraftForEditor(data: FastCapJson): FastCapJson {
+  const draft = cloneFastCapJson(data)
+  return {
+    f: draft.f.map((resource) => ({
+      ...resource,
+      t: Object.fromEntries(
+        Object.entries(resource.t).map(([id, refs]) => [
+          id,
+          {
+            bgmtv_epid: refs.bgmtv_epid ?? '',
+            tmdb_urlc: refs.tmdb_urlc ?? '',
+          },
+        ]),
+      ),
+    })),
+  }
+}
+
+function sanitizeFastCapDraftForApply(data: FastCapJson): FastCapJson {
+  return {
+    f: data.f.map((resource) => ({
+      ...resource,
+      t: Object.fromEntries(
+        Object.entries(resource.t).map(([id, refs]) => {
+          const bgmtvEpid = refs.bgmtv_epid?.trim()
+          const tmdbUrlc = refs.tmdb_urlc?.trim()
+          return [
+            id,
+            {
+              ...(bgmtvEpid ? { bgmtv_epid: bgmtvEpid } : {}),
+              ...(tmdbUrlc ? { tmdb_urlc: tmdbUrlc } : {}),
+            },
+          ]
+        }),
+      ),
+    })),
+  }
+}
+
 function isViewMode(value: string | null): value is ViewMode {
   return value === 'episode' || value === 'index'
 }
@@ -342,7 +388,7 @@ function App() {
 
   const showResult = (result: FastCapParseResult) => {
     setParsed(result)
-    setDraft(cloneFastCapJson(result.json))
+    setDraft(normalizeFastCapDraftForEditor(result.json))
     setMetadata(buildFallbackMetadata(result.episodeRows))
     void loadMetadata(result.episodeRows)
   }
@@ -406,7 +452,7 @@ function App() {
     if (!data) return
 
     try {
-      const result = parseFastCapJson(data)
+      const result = parseFastCapJson(sanitizeFastCapDraftForApply(data))
       inputForm.setFieldValue('input', result.yue, { dontValidate: true })
       showResult(result)
       setEditorError()
@@ -1390,7 +1436,7 @@ function FastCapEditor(props: {
           id: '',
           p: [],
           t: {
-            1: {},
+            1: createEmptyEpisodeRef(),
           },
         },
       ],
@@ -1523,7 +1569,7 @@ function ResourceEditor(props: {
       ...props.resource,
       t: {
         ...props.resource.t,
-        [nextId]: {},
+        [nextId]: createEmptyEpisodeRef(),
       },
     })
   }
@@ -1870,8 +1916,8 @@ function normalizeEpisodeRef(refs: {
   tmdb_urlc?: string
 }) {
   return {
-    bgmtv_epid: refs.bgmtv_epid?.trim() || undefined,
-    tmdb_urlc: refs.tmdb_urlc?.trim() || undefined,
+    bgmtv_epid: refs.bgmtv_epid ?? '',
+    tmdb_urlc: refs.tmdb_urlc ?? '',
   }
 }
 
