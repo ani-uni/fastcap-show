@@ -33,6 +33,7 @@
     "ky": "^2.0.2",
     "nitro": "3.0.260610-beta",
     "solid-js": "^1.9.12",
+    "solid-sonner": "^0.3.1",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^4.1.18",
     "tailwindcss-animate": "^1.0.7",

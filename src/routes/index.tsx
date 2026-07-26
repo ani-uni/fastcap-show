@@ -7,7 +7,9 @@ import type {
 } from '@tanstack/highlight/core'
 import { json } from '@tanstack/highlight/languages/json'
 import { toml } from '@tanstack/highlight/languages/toml'
+import { createForm } from '@tanstack/solid-form'
 import { createClientOnlyFn } from '@tanstack/solid-start'
+import 'solid-sonner/styles.css'
 import {
   For,
   Index,
@@ -18,6 +20,8 @@ import {
   onCleanup,
   onMount,
 } from 'solid-js'
+import type { Component } from 'solid-js'
+import type { ToasterProps } from 'solid-sonner'
 
 import {
   cloneFastCapJson,
@@ -156,12 +160,34 @@ function isImageExportFormat(value: string | null): value is ImageExportFormat {
   return value === 'png' || value === 'webp'
 }
 
+function validateFastCapInput(value: string) {
+  try {
+    parseFastCapInput(value)
+    return undefined
+  } catch (parseError) {
+    return getErrorMessage(parseError)
+  }
+}
+
+async function dismissToasts() {
+  if (typeof window === 'undefined') return
+  const { toast } = await import('solid-sonner')
+  toast.dismiss()
+}
+
+async function showErrorToast(message: string) {
+  if (typeof window === 'undefined') return
+  const { toast } = await import('solid-sonner')
+  toast.error('操作失败', {
+    description: message,
+    duration: 6000,
+  })
+}
+
 function App() {
-  const [input, setInput] = createSignal(starterInput)
   const [viewMode, setViewMode] = createSignal<ViewMode>('episode')
   const [parsed, setParsed] = createSignal<FastCapParseResult>()
   const [draft, setDraft] = createSignal<FastCapJson>()
-  const [error, setError] = createSignal<string>()
   const [editorError, setEditorError] = createSignal<string>()
   const [exportFormat, setExportFormat] = createSignal<'toml' | 'yue'>('toml')
   const [isParsing, setIsParsing] = createSignal(false)
@@ -179,9 +205,43 @@ function App() {
   const [imageExportBlob, setImageExportBlob] = createSignal<Blob>()
   const [showEpisodeImages, setShowEpisodeImages] = createSignal(true)
   const [isEditorCollapsed, setIsEditorCollapsed] = createSignal(false)
+  const [SonnerToaster, setSonnerToaster] =
+    createSignal<Component<ToasterProps>>()
   let metadataRequestId = 0
+  const inputForm = createForm(() => ({
+    defaultValues: {
+      input: starterInput,
+    },
+    onSubmit: ({ value }) => {
+      const result = parseFastCapInput(value.input)
+      void dismissToasts()
+      showResult(result)
+      setEditorError()
+    },
+  }))
+  const inputFormErrors = inputForm.useSelector(
+    (state) => state.fieldMeta.input?.errors ?? [],
+  )
+  const getInputFormError = () =>
+    inputFormErrors()
+      .filter((message): message is string => Boolean(message))
+      .join('；')
+  const setInputSubmitError = (message: string | undefined) => {
+    inputForm.setFieldMeta('input', (current) => ({
+      ...current,
+      isTouched: true,
+      errorMap: {
+        ...current.errorMap,
+        onSubmit: message,
+      },
+    }))
+  }
 
   onMount(() => {
+    void import('solid-sonner').then(({ Toaster }) => {
+      setSonnerToaster(() => Toaster)
+    })
+
     const savedShowImages = localStorage.getItem(showImagesStorageKey)
     if (savedShowImages !== null) {
       setShowEpisodeImages(savedShowImages === 'true')
@@ -295,19 +355,43 @@ function App() {
 
   const parseInput = async () => {
     setIsParsing(true)
-    setError()
+    void dismissToasts()
     await waitForPaint()
 
     try {
-      const result = parseFastCapInput(input())
+      await inputForm.handleSubmit()
+      const validationMessage = getInputFormError()
+      if (validationMessage) void showErrorToast(validationMessage)
+    } catch (submitError) {
+      void showErrorToast(getErrorMessage(submitError))
+    } finally {
+      setIsParsing(false)
+    }
+  }
+
+  const readClipboardAndParse = async () => {
+    setIsParsing(true)
+    void dismissToasts()
+    await waitForPaint()
+
+    try {
+      const clipboardText = await navigator.clipboard.readText()
+      const validationError = validateFastCapInput(clipboardText)
+      if (validationError) {
+        setInputSubmitError(validationError)
+        void showErrorToast(validationError)
+        return
+      }
+
+      inputForm.setFieldValue('input', clipboardText, { dontValidate: true })
+      setInputSubmitError(undefined)
+      const result = parseFastCapInput(clipboardText)
       showResult(result)
       setEditorError()
-      setIsParsing(false)
-    } catch (parseError) {
-      setError(getErrorMessage(parseError))
-      setIsParsing(false)
+    } catch (clipboardOrParseError) {
+      void showErrorToast(getErrorMessage(clipboardOrParseError))
     } finally {
-      if (isParsing()) setIsParsing(false)
+      setIsParsing(false)
     }
   }
 
@@ -323,7 +407,7 @@ function App() {
 
     try {
       const result = parseFastCapJson(data)
-      setInput(result.yue)
+      inputForm.setFieldValue('input', result.yue, { dontValidate: true })
       showResult(result)
       setEditorError()
       setExportFormat('yue')
@@ -334,10 +418,10 @@ function App() {
 
   const createEmptyConfig = () => {
     metadataRequestId += 1
-    setInput('')
+    inputForm.setFieldValue('input', '', { dontValidate: true })
     setParsed()
     setDraft(createEmptyFastCapDraft())
-    setError()
+    void dismissToasts()
     setEditorError()
     setMetadata()
     setIsLoadingMetadata(false)
@@ -394,6 +478,20 @@ function App() {
 
   return (
     <main class="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-4 py-8 lg:px-6">
+      <Show when={SonnerToaster()}>
+        {(Toaster) => {
+          const ToastComponent = Toaster()
+          return (
+            <ToastComponent
+              position="top-right"
+              richColors
+              closeButton
+              duration={6000}
+            />
+          )
+        }}
+      </Show>
+
       <section class="grid gap-6 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.4fr)]">
         <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div class="mb-4 flex items-start justify-between gap-4">
@@ -416,6 +514,14 @@ function App() {
               <button
                 type="button"
                 disabled={isParsing()}
+                class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={readClipboardAndParse}
+              >
+                读取剪贴板
+              </button>
+              <button
+                type="button"
+                disabled={isParsing()}
                 class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
                 onClick={parseInput}
               >
@@ -424,20 +530,21 @@ function App() {
             </div>
           </div>
 
-          <HighlightedCodeTextarea
-            value={input()}
-            language={getInputHighlightLanguage(input())}
-            minHeightClass="min-h-[420px]"
-            onInput={setInput}
-          />
-
-          <Show when={error()}>
-            {(message) => (
-              <p class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {message()}
-              </p>
+          <inputForm.Field
+            name="input"
+            validators={{
+              onSubmit: ({ value }) => validateFastCapInput(value),
+            }}
+          >
+            {(field) => (
+              <HighlightedCodeTextarea
+                value={field().state.value}
+                language={getInputHighlightLanguage(field().state.value)}
+                minHeightClass="min-h-[420px]"
+                onInput={field().handleChange}
+              />
             )}
-          </Show>
+          </inputForm.Field>
 
           <Show when={parsed()}>
             {(data) => (
