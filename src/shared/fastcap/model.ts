@@ -1,4 +1,4 @@
-import FastCap from '@ani-uni/fastcap'
+import { FastCap, FastCapUtils } from '@ani-uni/fastcap'
 
 export type FastCapJson = {
   f: Array<FastCapResource>
@@ -76,15 +76,44 @@ export function parseFastCapInput(input: string): FastCapParseResult {
   if (!trimmed) throw new Error('请输入 fastcap 配置')
 
   const parsed = createFastCap(trimmed)
-  const json = parsed.fc.toJSON() as FastCapJson
+  return buildFastCapResult(parsed.fc, parsed.format)
+}
+
+export function parseFastCapJson(json: FastCapJson): FastCapParseResult {
+  return buildFastCapResult(new FastCap(json), 'json')
+}
+
+export function cloneFastCapJson(json: FastCapJson): FastCapJson {
+  return structuredClone(json)
+}
+
+export function parseProgressTimestamp(input: string) {
+  return FastCapUtils.zProgressTimestampCodec.decode(input)
+}
+
+export function isProgressTimestamp(input: string) {
+  const re = new RegExp(`^${FastCapUtils.reProgressTimestampSource}$`)
+  return re.test(input)
+}
+
+export function formatMilliseconds(value: number): string {
+  if (value < 0) return `-${formatMilliseconds(Math.abs(value))}`
+  return FastCapUtils.zProgressTimestampCodec.encode(value)
+}
+
+function buildFastCapResult(
+  fc: FastCap,
+  format: FastCapParseFormat,
+): FastCapParseResult {
+  const json = fc.toJSON() as FastCapJson
   const episodeRows = buildEpisodeRows(json)
   const indexRows = buildIndexRows(episodeRows)
 
   return {
-    format: parsed.format,
+    format,
     json,
-    toml: parsed.fc.toString('toml'),
-    yue: parsed.fc.toString('yue'),
+    toml: fc.toString('toml'),
+    yue: fc.toString('yue'),
     episodeRows,
     indexRows,
     stats: {
@@ -93,24 +122,6 @@ export function parseFastCapInput(input: string): FastCapParseResult {
       clips: indexRows.length,
     },
   }
-}
-
-export function formatMilliseconds(value: number) {
-  const sign = value < 0 ? '-' : ''
-  const absolute = Math.abs(value)
-  const milliseconds = absolute % 1000
-  const totalSeconds = Math.floor(absolute / 1000)
-  const seconds = totalSeconds % 60
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const minutes = totalMinutes % 60
-  const hours = Math.floor(totalMinutes / 60)
-  return `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(
-    2,
-    '0',
-  )}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(
-    3,
-    '0',
-  )}`
 }
 
 function createFastCap(input: string) {

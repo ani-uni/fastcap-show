@@ -1,12 +1,28 @@
 import { createFileRoute } from '@tanstack/solid-router'
 import { createClientOnlyFn } from '@tanstack/solid-start'
-import { For, Show, createMemo, createSignal, onMount } from 'solid-js'
+import {
+  For,
+  Index,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onMount,
+} from 'solid-js'
 
-import { formatMilliseconds, parseFastCapInput } from '~/shared/fastcap/model'
+import {
+  cloneFastCapJson,
+  formatMilliseconds,
+  parseFastCapInput,
+  parseFastCapJson,
+  parseProgressTimestamp,
+} from '~/shared/fastcap/model'
 import type {
   FastCapEpisodeRow,
   FastCapIndexRow,
+  FastCapJson,
   FastCapParseResult,
+  FastCapResource,
 } from '~/shared/fastcap/model'
 import { getFastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
 import type { FastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
@@ -34,11 +50,17 @@ p = [ [ 0, 1371000, 0, 1 ] ]
 bgmtv_epid = "1670640"
 \`\`\``
 
+function createEmptyFastCapDraft(): FastCapJson {
+  return { f: [] }
+}
+
 function App() {
   const [input, setInput] = createSignal(starterInput)
   const [viewMode, setViewMode] = createSignal<ViewMode>('episode')
   const [parsed, setParsed] = createSignal<FastCapParseResult>()
+  const [draft, setDraft] = createSignal<FastCapJson>()
   const [error, setError] = createSignal<string>()
+  const [editorError, setEditorError] = createSignal<string>()
   const [exportFormat, setExportFormat] = createSignal<'toml' | 'yue'>('toml')
   const [isParsing, setIsParsing] = createSignal(false)
   const [metadata, setMetadata] =
@@ -106,6 +128,13 @@ function App() {
       }),
     )
 
+  const showResult = (result: FastCapParseResult) => {
+    setParsed(result)
+    setDraft(cloneFastCapJson(result.json))
+    setMetadata(buildFallbackMetadata(result.episodeRows))
+    void loadMetadata(result.episodeRows)
+  }
+
   const exportText = createMemo(() => {
     const data = parsed()
     if (!data) return ''
@@ -119,10 +148,9 @@ function App() {
 
     try {
       const result = parseFastCapInput(input())
-      setParsed(result)
-      setMetadata(buildFallbackMetadata(result.episodeRows))
+      showResult(result)
+      setEditorError()
       setIsParsing(false)
-      void loadMetadata(result.episodeRows)
     } catch (parseError) {
       setError(getErrorMessage(parseError))
       setIsParsing(false)
@@ -135,6 +163,33 @@ function App() {
     const text = exportText()
     if (!text) return
     void navigator.clipboard.writeText(text)
+  }
+
+  const applyDraft = () => {
+    const data = draft()
+    if (!data) return
+
+    try {
+      const result = parseFastCapJson(data)
+      setInput(result.yue)
+      showResult(result)
+      setEditorError()
+      setExportFormat('yue')
+    } catch (applyError) {
+      setEditorError(getErrorMessage(applyError))
+    }
+  }
+
+  const createEmptyConfig = () => {
+    metadataRequestId += 1
+    setInput('')
+    setParsed()
+    setDraft(createEmptyFastCapDraft())
+    setError()
+    setEditorError()
+    setMetadata()
+    setIsLoadingMetadata(false)
+    setExportFormat('toml')
   }
 
   return (
@@ -150,14 +205,23 @@ function App() {
                 配置查看器
               </h1>
             </div>
-            <button
-              type="button"
-              disabled={isParsing()}
-              class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-              onClick={parseInput}
-            >
-              {isParsing() ? '解析中…' : '解析'}
-            </button>
+            <div class="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                onClick={createEmptyConfig}
+              >
+                创建空配置
+              </button>
+              <button
+                type="button"
+                disabled={isParsing()}
+                class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={parseInput}
+              >
+                {isParsing() ? '解析中…' : '解析'}
+              </button>
+            </div>
           </div>
 
           <textarea
@@ -220,9 +284,32 @@ function App() {
           <Show
             when={parsed()}
             fallback={
-              <div class="flex min-h-[560px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
-                粘贴配置后点击解析。
-              </div>
+              <Show
+                when={draft()}
+                fallback={
+                  <div class="flex min-h-[560px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                    粘贴配置后点击解析，或创建空配置后从可视化编辑器开始。
+                  </div>
+                }
+              >
+                {(draftData) => (
+                  <div class="flex min-w-0 flex-col gap-4">
+                    <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+                      当前是空配置草稿。补充资源、剧集引用和片段后点击“应用到配置”生成
+                      TOML。
+                    </div>
+                    <FastCapEditor
+                      draft={draftData()}
+                      error={editorError()}
+                      onApply={applyDraft}
+                      onChange={(next) => {
+                        setDraft(next)
+                        setEditorError()
+                      }}
+                    />
+                  </div>
+                )}
+              </Show>
             }
           >
             {(data) => (
@@ -277,6 +364,20 @@ function App() {
                     loading={isLoadingMetadata()}
                     showImages={showEpisodeImages()}
                   />
+                </Show>
+
+                <Show when={draft()}>
+                  {(draftData) => (
+                    <FastCapEditor
+                      draft={draftData()}
+                      error={editorError()}
+                      onApply={applyDraft}
+                      onChange={(next) => {
+                        setDraft(next)
+                        setEditorError()
+                      }}
+                    />
+                  )}
                 </Show>
               </div>
             )}
@@ -348,6 +449,479 @@ function fallbackMetadata(
   } satisfies FastCapEpisodeMetadata
 }
 
+function FastCapEditor(props: {
+  draft: FastCapJson
+  error?: string
+  onApply: () => void
+  onChange: (next: FastCapJson) => void
+}) {
+  const updateResource = (
+    resourceIndex: number,
+    updater: (resource: FastCapResource) => FastCapResource,
+  ) => {
+    props.onChange({
+      f: props.draft.f.map((resource, index) =>
+        index === resourceIndex ? updater(resource) : resource,
+      ),
+    })
+  }
+
+  const addResource = () => {
+    props.onChange({
+      f: [
+        ...props.draft.f,
+        {
+          i: 'bili_cid',
+          id: '',
+          p: [],
+          t: {
+            1: {},
+          },
+        },
+      ],
+    })
+  }
+
+  const deleteResource = (resourceIndex: number) => {
+    props.onChange({
+      f: props.draft.f.filter((_, index) => index !== resourceIndex),
+    })
+  }
+
+  return (
+    <div class="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="m-0 text-lg font-semibold text-slate-950">可视化编辑器</h2>
+          <p class="mt-1 mb-0 text-xs text-slate-500">
+            改动保存在草稿中，点击应用后才会更新配置文本和表格。
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+            onClick={addResource}
+          >
+            新增资源
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+            onClick={props.onApply}
+          >
+            应用到配置
+          </button>
+        </div>
+      </div>
+
+      <Show when={props.error}>
+        {(message) => (
+          <p class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {message()}
+          </p>
+        )}
+      </Show>
+
+      <div class="flex flex-col gap-4">
+        <Show
+          when={props.draft.f.length > 0}
+          fallback={
+            <div class="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+              还没有资源。点击“新增资源”开始创建 fastcap 配置。
+            </div>
+          }
+        >
+          <Index each={props.draft.f}>
+            {(resource, resourceIndex) => (
+              <ResourceEditor
+                resource={resource()}
+                resourceIndex={resourceIndex}
+                onChange={(next) => updateResource(resourceIndex, () => next)}
+                onDelete={() => deleteResource(resourceIndex)}
+              />
+            )}
+          </Index>
+        </Show>
+      </div>
+    </div>
+  )
+}
+
+function ResourceEditor(props: {
+  resource: FastCapResource
+  resourceIndex: number
+  onChange: (next: FastCapResource) => void
+  onDelete: () => void
+}) {
+  const episodeEntries = createMemo(() =>
+    Object.entries(props.resource.t).sort(
+      ([left], [right]) => Number(left) - Number(right),
+    ),
+  )
+
+  const setResource = (patch: Partial<FastCapResource>) => {
+    props.onChange({ ...props.resource, ...patch })
+  }
+
+  const addEpisode = () => {
+    const nextId = getNextEpisodeId(props.resource)
+    props.onChange({
+      ...props.resource,
+      t: {
+        ...props.resource.t,
+        [nextId]: {},
+      },
+    })
+  }
+
+  const updateEpisodeId = (oldId: string, newValue: string) => {
+    const newId = Number.parseInt(newValue, 10)
+    if (!Number.isInteger(newId) || newId <= 0) return
+    const refs = props.resource.t[oldId]
+    const nextT = { ...props.resource.t }
+    delete nextT[oldId]
+    nextT[String(newId)] = refs
+    const oldNumericId = Number.parseInt(oldId, 10)
+    props.onChange({
+      ...props.resource,
+      t: nextT,
+      p: props.resource.p.map((clip) =>
+        clip[3] === oldNumericId ? [clip[0], clip[1], clip[2], newId] : clip,
+      ),
+    })
+  }
+
+  const updateEpisodeRefs = (
+    id: string,
+    patch: { bgmtv_epid?: string; tmdb_urlc?: string },
+  ) => {
+    props.onChange({
+      ...props.resource,
+      t: {
+        ...props.resource.t,
+        [id]: normalizeEpisodeRef({
+          ...props.resource.t[id],
+          ...patch,
+        }),
+      },
+    })
+  }
+
+  const deleteEpisode = (id: string) => {
+    const numericId = Number.parseInt(id, 10)
+    if (props.resource.p.some((clip) => clip[3] === numericId)) return
+    const nextT = { ...props.resource.t }
+    delete nextT[id]
+    props.onChange({
+      ...props.resource,
+      t: nextT,
+    })
+  }
+
+  const addClip = () => {
+    const firstEpisodeId =
+      Number.parseInt(Object.keys(props.resource.t)[0] ?? '1', 10) || 1
+    props.onChange({
+      ...props.resource,
+      p: [...props.resource.p, [0, 0, 0, firstEpisodeId]],
+    })
+  }
+
+  const updateClip = (
+    clipIndex: number,
+    next: [number, number, number, number],
+  ) => {
+    props.onChange({
+      ...props.resource,
+      p: props.resource.p.map((clip, index) =>
+        index === clipIndex ? next : clip,
+      ),
+    })
+  }
+
+  const deleteClip = (clipIndex: number) => {
+    props.onChange({
+      ...props.resource,
+      p: props.resource.p.filter((_, index) => index !== clipIndex),
+    })
+  }
+
+  return (
+    <section class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div class="mb-4 flex flex-wrap items-end gap-3">
+        <label class="flex min-w-32 flex-1 flex-col gap-1 text-xs font-semibold text-slate-500">
+          索引类型
+          <input
+            value={props.resource.i}
+            readOnly
+            class="rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm font-medium text-slate-600"
+          />
+        </label>
+        <label class="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-semibold text-slate-500">
+          资源 ID
+          <input
+            value={props.resource.id}
+            onInput={(event) => setResource({ id: event.currentTarget.value })}
+            class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+          />
+        </label>
+        <button
+          type="button"
+          class="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+          onClick={props.onDelete}
+        >
+          删除资源
+        </button>
+      </div>
+
+      <div class="grid gap-4 2xl:grid-cols-2">
+        <div class="rounded-md border border-slate-200 bg-white p-3">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h3 class="m-0 text-sm font-semibold text-slate-950">剧集表</h3>
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 transition hover:bg-slate-100"
+              onClick={addEpisode}
+            >
+              新增剧集
+            </button>
+          </div>
+          <div class="flex flex-col gap-3">
+            <Index each={episodeEntries()}>
+              {(entry) => {
+                const id = () => entry()[0]
+                const refs = () => entry()[1]
+
+                return (
+                  <div class="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[5rem_minmax(0,1fr)]">
+                    <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                      Ep ID
+                      <input
+                        type="number"
+                        min="1"
+                        value={id()}
+                        onChange={(event) =>
+                          updateEpisodeId(id(), event.currentTarget.value)
+                        }
+                        class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                      />
+                    </label>
+                    <div class="grid gap-2 md:grid-cols-2">
+                      <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                        bgmtv_epid
+                        <input
+                          value={refs().bgmtv_epid ?? ''}
+                          onInput={(event) =>
+                            updateEpisodeRefs(id(), {
+                              bgmtv_epid: event.currentTarget.value,
+                            })
+                          }
+                          class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                        />
+                      </label>
+                      <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                        tmdb_urlc
+                        <input
+                          value={refs().tmdb_urlc ?? ''}
+                          onInput={(event) =>
+                            updateEpisodeRefs(id(), {
+                              tmdb_urlc: event.currentTarget.value,
+                            })
+                          }
+                          class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                        />
+                      </label>
+                    </div>
+                    <div class="md:col-span-2 flex items-center justify-end">
+                      <button
+                        type="button"
+                        disabled={props.resource.p.some(
+                          (clip) => clip[3] === Number.parseInt(id(), 10),
+                        )}
+                        class="rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => deleteEpisode(id())}
+                      >
+                        删除剧集
+                      </button>
+                    </div>
+                  </div>
+                )
+              }}
+            </Index>
+          </div>
+        </div>
+
+        <div class="rounded-md border border-slate-200 bg-white p-3">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h3 class="m-0 text-sm font-semibold text-slate-950">片段</h3>
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 transition hover:bg-slate-100"
+              onClick={addClip}
+            >
+              新增片段
+            </button>
+          </div>
+          <div class="flex flex-col gap-3">
+            <Index each={props.resource.p}>
+              {(clip, clipIndex) => (
+                <ClipEditor
+                  clip={clip()}
+                  clipIndex={clipIndex}
+                  episodeIds={episodeEntries().map(([id]) =>
+                    Number.parseInt(id, 10),
+                  )}
+                  onChange={(next) => updateClip(clipIndex, next)}
+                  onDelete={() => deleteClip(clipIndex)}
+                />
+              )}
+            </Index>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ClipEditor(props: {
+  clip: [number, number, number, number]
+  clipIndex: number
+  episodeIds: Array<number>
+  onChange: (next: [number, number, number, number]) => void
+  onDelete: () => void
+}) {
+  const updateValue = (position: 0 | 1 | 2 | 3, value: number) => {
+    const next: [number, number, number, number] = [...props.clip]
+    next[position] = value
+    props.onChange(next)
+  }
+
+  return (
+    <div class="rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div class="mb-2 flex items-center justify-between gap-3">
+        <p class="m-0 text-xs font-semibold text-slate-500">
+          Clip {props.clipIndex}
+        </p>
+        <button
+          type="button"
+          class="rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+          onClick={props.onDelete}
+        >
+          删除片段
+        </button>
+      </div>
+      <div class="grid gap-2 md:grid-cols-2">
+        <TimestampField
+          label="视频开始"
+          value={props.clip[0]}
+          onChange={(value) => updateValue(0, value)}
+        />
+        <TimestampField
+          label="视频结束"
+          value={props.clip[1]}
+          onChange={(value) => updateValue(1, value)}
+        />
+        <TimestampField
+          label="真实进度 offset"
+          value={props.clip[2]}
+          onChange={(value) => updateValue(2, value)}
+        />
+        <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+          归属 Ep
+          <select
+            value={String(props.clip[3])}
+            onChange={(event) =>
+              updateValue(3, Number.parseInt(event.currentTarget.value, 10))
+            }
+            class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+          >
+            <For each={props.episodeIds}>
+              {(id) => <option value={String(id)}>{id}</option>}
+            </For>
+          </select>
+        </label>
+      </div>
+    </div>
+  )
+}
+
+function TimestampField(props: {
+  label: string
+  value: number
+  onChange: (value: number) => void
+}) {
+  const [textValue, setTextValue] = createSignal(
+    formatMilliseconds(props.value),
+  )
+  const [error, setError] = createSignal<string>()
+
+  createEffect(() => {
+    setTextValue(formatMilliseconds(props.value))
+    setError()
+  })
+
+  const applyTimestamp = (value: string) => {
+    setTextValue(value)
+    try {
+      props.onChange(parseProgressTimestamp(value))
+      setError()
+    } catch {
+      setError('时间格式应为 00:00:00.000')
+    }
+  }
+
+  const applyMilliseconds = (value: string) => {
+    const next = Number.parseInt(value, 10)
+    if (!Number.isFinite(next) || next < 0) {
+      setError('毫秒值必须是非负整数')
+      return
+    }
+    props.onChange(next)
+    setTextValue(formatMilliseconds(next))
+    setError()
+  }
+
+  return (
+    <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+      {props.label}
+      <input
+        value={textValue()}
+        onChange={(event) => applyTimestamp(event.currentTarget.value)}
+        class="rounded-md border border-slate-200 bg-white px-2 py-1.5 font-mono text-sm text-slate-900"
+      />
+      <input
+        type="number"
+        min="0"
+        value={String(props.value)}
+        onInput={(event) => applyMilliseconds(event.currentTarget.value)}
+        class="rounded-md border border-slate-200 bg-white px-2 py-1.5 font-mono text-xs text-slate-700"
+      />
+      <Show when={error()}>
+        {(message) => <span class="text-xs text-red-600">{message()}</span>}
+      </Show>
+    </label>
+  )
+}
+
+function getNextEpisodeId(resource: FastCapResource) {
+  const maxId = Object.keys(resource.t).reduce(
+    (max, id) => Math.max(max, Number.parseInt(id, 10) || 0),
+    0,
+  )
+  return maxId + 1
+}
+
+function normalizeEpisodeRef(refs: {
+  bgmtv_epid?: string
+  tmdb_urlc?: string
+}) {
+  return {
+    bgmtv_epid: refs.bgmtv_epid?.trim() || undefined,
+    tmdb_urlc: refs.tmdb_urlc?.trim() || undefined,
+  }
+}
+
 function EpisodeTable(props: {
   episodes: Array<FastCapEpisodeRow>
   metadata?: Record<string, FastCapEpisodeMetadata>
@@ -371,52 +945,90 @@ function EpisodeTable(props: {
         <tbody>
           <For each={props.episodes}>
             {(episode) => (
-              <For each={episode.clips}>
-                {(clip, clipOffset) => (
-                  <tr class="border-t border-slate-200 align-top">
-                    <td class="px-3 py-3 font-mono text-slate-700">
-                      <Show when={clipOffset() === 0}>
-                        {episode.tempEpId}
-                        <span class="ml-1 text-xs text-slate-400">
-                          f{episode.resourceIndex}
-                        </span>
-                      </Show>
-                    </td>
-                    <td class="max-w-72 px-3 py-3">
-                      <Show when={clipOffset() === 0}>
-                        <EpisodeMeta
-                          episode={episode}
-                          metadata={props.metadata?.[episode.key]}
-                          loading={props.loading}
-                          showImage={props.showImages}
-                        />
-                      </Show>
-                    </td>
-                    <td class="px-3 py-3 font-mono text-xs text-slate-600">
-                      {episode.indexType}:{episode.resourceId}
-                    </td>
-                    <td class="px-3 py-3 font-mono text-slate-700">
-                      {clip.clipIndex}
-                    </td>
-                    <td class="px-3 py-3 font-mono text-xs text-slate-700">
-                      {formatMilliseconds(clip.videoBegin)} →{' '}
-                      {formatMilliseconds(clip.videoEnd)}
-                    </td>
-                    <td class="px-3 py-3 font-mono text-xs text-slate-700">
-                      {formatMilliseconds(clip.realBegin)} →{' '}
-                      {formatMilliseconds(clip.realEnd)}
-                    </td>
-                    <td class="px-3 py-3 font-mono text-xs text-slate-700">
-                      {formatMilliseconds(clip.offset)}
-                    </td>
-                  </tr>
-                )}
-              </For>
+              <Show
+                when={episode.clips.length > 0}
+                fallback={<EpisodeOnlyRow episode={episode} {...props} />}
+              >
+                <For each={episode.clips}>
+                  {(clip, clipOffset) => (
+                    <tr class="border-t border-slate-200 align-top">
+                      <td class="px-3 py-3 font-mono text-slate-700">
+                        <Show when={clipOffset() === 0}>
+                          {episode.tempEpId}
+                          <span class="ml-1 text-xs text-slate-400">
+                            f{episode.resourceIndex}
+                          </span>
+                        </Show>
+                      </td>
+                      <td class="max-w-72 px-3 py-3">
+                        <Show when={clipOffset() === 0}>
+                          <EpisodeMeta
+                            episode={episode}
+                            metadata={props.metadata?.[episode.key]}
+                            loading={props.loading}
+                            showImage={props.showImages}
+                          />
+                        </Show>
+                      </td>
+                      <td class="px-3 py-3 font-mono text-xs text-slate-600">
+                        {episode.indexType}:{episode.resourceId}
+                      </td>
+                      <td class="px-3 py-3 font-mono text-slate-700">
+                        {clip.clipIndex}
+                      </td>
+                      <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                        {formatMilliseconds(clip.videoBegin)} →{' '}
+                        {formatMilliseconds(clip.videoEnd)}
+                      </td>
+                      <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                        {formatMilliseconds(clip.realBegin)} →{' '}
+                        {formatMilliseconds(clip.realEnd)}
+                      </td>
+                      <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                        {formatMilliseconds(clip.offset)}
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </Show>
             )}
           </For>
         </tbody>
       </table>
     </div>
+  )
+}
+
+function EpisodeOnlyRow(props: {
+  episode: FastCapEpisodeRow
+  metadata?: Record<string, FastCapEpisodeMetadata>
+  loading: boolean
+  showImages: boolean
+}) {
+  return (
+    <tr class="border-t border-slate-200 align-top">
+      <td class="px-3 py-3 font-mono text-slate-700">
+        {props.episode.tempEpId}
+        <span class="ml-1 text-xs text-slate-400">
+          f{props.episode.resourceIndex}
+        </span>
+      </td>
+      <td class="max-w-72 px-3 py-3">
+        <EpisodeMeta
+          episode={props.episode}
+          metadata={props.metadata?.[props.episode.key]}
+          loading={props.loading}
+          showImage={props.showImages}
+        />
+      </td>
+      <td class="px-3 py-3 font-mono text-xs text-slate-600">
+        {props.episode.indexType}:{props.episode.resourceId}
+      </td>
+      <td class="px-3 py-3 text-slate-400">无片段</td>
+      <td class="px-3 py-3 text-slate-400">—</td>
+      <td class="px-3 py-3 text-slate-400">—</td>
+      <td class="px-3 py-3 text-slate-400">—</td>
+    </tr>
   )
 }
 

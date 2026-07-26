@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vite-plus/test'
 
-import { formatMilliseconds, parseFastCapInput } from './model'
+import {
+  formatMilliseconds,
+  parseFastCapInput,
+  parseFastCapJson,
+  parseProgressTimestamp,
+} from './model'
+import type { FastCapJson } from './model'
 
-const jsonInput = {
+const jsonInput: FastCapJson = {
   f: [
     {
       i: 'bili_cid',
@@ -81,11 +87,23 @@ bgmtv_epid = "11"`)
       '0:2',
     ])
   })
+
+  it('applies json through the fastcap package exporter', () => {
+    const result = parseFastCapJson(jsonInput)
+    const reparsed = parseFastCapInput(result.toml)
+
+    expect(result.stats.clips).toBe(3)
+    expect(reparsed.json).toEqual(result.json)
+  })
 })
 
 describe('formatMilliseconds', () => {
   it('formats signed millisecond values', () => {
     expect(formatMilliseconds(3723004)).toBe('01:02:03.004')
     expect(formatMilliseconds(-1000)).toBe('-00:00:01.000')
+  })
+
+  it('parses progress timestamps with FastCapUtils', () => {
+    expect(parseProgressTimestamp('01:02:03.004')).toBe(3723004)
   })
 })
