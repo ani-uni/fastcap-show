@@ -6,6 +6,7 @@
     "dev": "vp dev --port 3000",
     "generate-routes": "tsr generate",
     "build": "vp build",
+    "build:edgeone": "NITRO_PRESET=edgeone-pages vpr build",
     "start": "node .output/server/index.mjs",
     "preview": "vp preview",
     "lint": "vp lint",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-cli": "^1.133.21",
+    "@types/node": "^26.1.1",
     "typescript": "^6.0.2",
     "vite": "catalog:",
     "vite-plugin-solid": "^2.11.12",
