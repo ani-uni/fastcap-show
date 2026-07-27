@@ -11,7 +11,7 @@ import {
 import { isServer } from 'solid-js/web'
 import type { Setter } from 'solid-js'
 import { fastcapHighlighter } from '~/lib/highlighter'
-import { getFastCapReadme } from './about.functions'
+import { createServerFn } from '@tanstack/solid-start'
 
 export const Route = createFileRoute('/about')({
   component: About,
@@ -47,6 +47,14 @@ function createCachedSignal(
     }) as unknown as Setter<string | undefined>,
   ]
 }
+
+const getFastCapReadme = createServerFn({ method: 'GET' }).handler(async () => {
+  const res = await fetch(
+    'https://raw.githubusercontent.com/ani-uni/fastcap/master/README.md',
+  )
+  if (!res.ok) throw new Error(`Failed to fetch README: ${res.status}`)
+  return await res.text()
+})
 
 function Markdown() {
   const cached = isServer
