@@ -1,41 +1,76 @@
 import { Link } from '@tanstack/solid-router'
+import { For } from 'solid-js'
+
+interface InternalLink {
+  type: 'internal'
+  label: string
+  to: string
+}
+
+interface ExternalLink {
+  type: 'external'
+  label: string
+  href: string
+}
+
+type NavItem = InternalLink | ExternalLink
+
+const navItems: Array<NavItem> = [
+  { type: 'internal', label: '主页', to: '/' },
+  { type: 'internal', label: '理念/文档', to: '/about' },
+  {
+    type: 'external',
+    label: 'GitHub',
+    href: 'https://github.com/ani-uni/fastcap',
+  },
+]
 
 export default function Header() {
   return (
-    <header class="site-header px-4">
-      <nav class="page-wrap nav-shell">
-        <h2 class="m-0 flex-shrink-0 text-base font-semibold tracking-tight">
-          <Link to="/" class="brand-pill">
-            <span class="brand-dot" />
-            FastCap Show
-          </Link>
-        </h2>
+    <header class="border-b border-border bg-background/80 backdrop-blur-sm">
+      <div class="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
+        <Link
+          to="/"
+          class="flex items-center gap-2 font-semibold tracking-tight"
+        >
+          <span class="h-2.5 w-2.5 rounded-full bg-primary" />
+          FastCap Show
+        </Link>
 
-        <div class="order-3 ml-auto flex w-full flex-wrap items-center gap-x-4 gap-y-1 pb-1 text-sm font-semibold sm:order-2 sm:w-auto sm:flex-nowrap sm:pb-0">
-          <Link
-            to="/"
-            class="nav-link"
-            activeProps={{ class: 'nav-link is-active' }}
-          >
-            Home
-          </Link>
-          <Link
-            to="/about"
-            class="nav-link"
-            activeProps={{ class: 'nav-link is-active' }}
-          >
-            About
-          </Link>
-          <a
-            href="https://github.com/ani-uni/fastcap"
-            target="_blank"
-            rel="noreferrer"
-            class="nav-link"
-          >
-            FastCap
-          </a>
-        </div>
-      </nav>
+        <nav class="ml-auto flex items-center gap-1 text-sm">
+          <For each={navItems}>{(item) => <NavLink item={item} />}</For>
+        </nav>
+      </div>
     </header>
+  )
+}
+
+function NavLink(props: { item: NavItem }) {
+  const { item } = props
+
+  if (item.type === 'internal') {
+    return (
+      <Link
+        to={item.to}
+        class="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        activeProps={{
+          class: 'rounded-md px-3 py-1.5 bg-accent text-foreground',
+          'aria-current': 'page',
+        }}
+      >
+        {item.label}
+      </Link>
+    )
+  }
+
+  return (
+    <a
+      href={item.href}
+      target="_blank"
+      rel="noreferrer"
+      class="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {item.label}
+    </a>
   )
 }
