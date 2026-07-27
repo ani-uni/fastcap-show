@@ -506,10 +506,8 @@ const TMDBApiSchema = {
 }
 
 export class TMDB {
-  public api_url = new URL(
-    env.VITE_TMDB_API_URL ?? env.TMDB_API_URL ?? 'https://api.tmdb.org',
-  )
-  public api_key = env.VITE_TMDB_API_KEY ?? env.TMDB_API_KEY
+  public api_url = new URL(env.VITE_TMDB_API_URL ?? 'https://api.tmdb.org')
+  public api_key = env.VITE_TMDB_API_KEY
   toJSON() {
     return {
       api_url: this.api_url.toString(),
@@ -539,7 +537,7 @@ export class TMDB {
         api_key:
           this.api_key === 'proxy'
             ? undefined
-            : (this.api_key ?? env.VITE_TMDB_API_KEY ?? env.TMDB_API_KEY),
+            : (this.api_key ?? env.VITE_TMDB_API_KEY),
         language: 'zh-CN',
         include_image_language: 'zh,null',
       },

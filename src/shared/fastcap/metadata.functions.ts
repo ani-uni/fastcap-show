@@ -36,7 +36,7 @@ export const getFastCapEpisodeMetadata = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     const bgmtv = new BgmTv()
-    const tmdb = TMDB.init()
+    const tmdb = new TMDB()
 
     const entries = await Promise.all(
       data.episodes.map(async (episode) => [
