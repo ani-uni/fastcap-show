@@ -4,6 +4,9 @@ import { z } from 'zod'
 export const env = createEnv({
   server: {
     SERVER_URL: z.url().optional(),
+    TMDB_API_KEY: z.string().optional(),
+    TMDB_API_URL: z.url().optional(),
+    BGMTV_API_URL: z.url().optional(),
   },
 
   /**
@@ -15,13 +18,20 @@ export const env = createEnv({
   client: {
     VITE_APP_TITLE: z.string().min(1).optional(),
     VITE_TMDB_API_KEY: z.string().optional(),
+    VITE_TMDB_API_URL: z.url().optional(),
+    VITE_BGMTV_API_URL: z.url().optional(),
   },
 
   /**
    * What object holds the environment variables at runtime. This is usually
    * `process.env` or `import.meta.env`.
    */
-  runtimeEnv: import.meta.env,
+  runtimeEnv: {
+    ...import.meta.env,
+    TMDB_API_KEY: import.meta.env.VITE_TMDB_API_KEY,
+    TMDB_API_URL: import.meta.env.VITE_TMDB_API_URL,
+    BGMTV_API_URL: import.meta.env.VITE_BGMTV_API_URL,
+  },
 
   /**
    * By default, this library will feed the environment variables directly to

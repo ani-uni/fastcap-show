@@ -2,6 +2,7 @@ import ky from 'ky'
 import z from 'zod'
 
 import { headers } from '../headers'
+import { env } from '~/env'
 
 const BgmTvApiModelSchema = {
   Paged: z.object({
@@ -137,7 +138,9 @@ const BgmTvApiSchema = {
 }
 
 export class BgmTv {
-  public api_url = new URL('https://api.bgm.tv')
+  public api_url = new URL(
+    env.VITE_BGMTV_API_URL ?? env.BGMTV_API_URL ?? 'https://api.bgm.tv',
+  )
   kyInstance() {
     const hds = headers.get('app')
     hds.set('Accept', 'application/json')

@@ -11,8 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
-import { Route as DemoStoreRouteImport } from './routes/demo.store'
-import { Route as DemoSentryBadEventHandlerRouteImport } from './routes/demo.sentry.bad-event-handler'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,55 +22,31 @@ const AboutRoute = AboutRouteImport.update({
   path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoStoreRoute = DemoStoreRouteImport.update({
-  id: '/demo/store',
-  path: '/demo/store',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoSentryBadEventHandlerRoute =
-  DemoSentryBadEventHandlerRouteImport.update({
-    id: '/demo/sentry/bad-event-handler',
-    path: '/demo/sentry/bad-event-handler',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/demo/store': typeof DemoStoreRoute
-  '/demo/sentry/bad-event-handler': typeof DemoSentryBadEventHandlerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/demo/store': typeof DemoStoreRoute
-  '/demo/sentry/bad-event-handler': typeof DemoSentryBadEventHandlerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
-  '/demo/store': typeof DemoStoreRoute
-  '/demo/sentry/bad-event-handler': typeof DemoSentryBadEventHandlerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/demo/store' | '/demo/sentry/bad-event-handler'
+  fullPaths: '/' | '/about'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/demo/store' | '/demo/sentry/bad-event-handler'
-  id:
-    | '__root__'
-    | '/'
-    | '/about'
-    | '/demo/store'
-    | '/demo/sentry/bad-event-handler'
+  to: '/' | '/about'
+  id: '__root__' | '/' | '/about'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
-  DemoStoreRoute: typeof DemoStoreRoute
-  DemoSentryBadEventHandlerRoute: typeof DemoSentryBadEventHandlerRoute
 }
 
 declare module '@tanstack/solid-router' {
@@ -91,28 +65,12 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/store': {
-      id: '/demo/store'
-      path: '/demo/store'
-      fullPath: '/demo/store'
-      preLoaderRoute: typeof DemoStoreRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/sentry/bad-event-handler': {
-      id: '/demo/sentry/bad-event-handler'
-      path: '/demo/sentry/bad-event-handler'
-      fullPath: '/demo/sentry/bad-event-handler'
-      preLoaderRoute: typeof DemoSentryBadEventHandlerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
-  DemoStoreRoute: DemoStoreRoute,
-  DemoSentryBadEventHandlerRoute: DemoSentryBadEventHandlerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
