@@ -3,6 +3,7 @@ import { renderHtml } from '@tanstack/markdown/html'
 import {
   Show,
   Suspense,
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -10,8 +11,9 @@ import {
 } from 'solid-js'
 import { isServer } from 'solid-js/web'
 import type { Setter } from 'solid-js'
-import { fastcapHighlighter } from '~/lib/highlighter'
 import { createServerFn } from '@tanstack/solid-start'
+import { staticFunctionMiddleware } from '@tanstack/start-static-server-functions'
+import { fastcapHighlighter } from '~/lib/highlighter'
 
 export const Route = createFileRoute('/about')({
   component: About,
@@ -20,7 +22,7 @@ export const Route = createFileRoute('/about')({
 const README_URL =
   'https://raw.githubusercontent.com/ani-uni/fastcap/master/README.md'
 const CACHE_KEY = 'fastcap-readme-cache'
-const CLIENT_TIMEOUT_MS = 5000
+const CLIENT_TIMEOUT_MS = 2000
 
 function createCachedSignal(
   key: string,
@@ -48,13 +50,13 @@ function createCachedSignal(
   ]
 }
 
-const getFastCapReadme = createServerFn({ method: 'GET' }).handler(async () => {
-  const res = await fetch(
-    'https://raw.githubusercontent.com/ani-uni/fastcap/master/README.md',
-  )
-  if (!res.ok) throw new Error(`Failed to fetch README: ${res.status}`)
-  return await res.text()
-})
+const getFastCapReadme = createServerFn({ method: 'GET' })
+  .middleware([staticFunctionMiddleware])
+  .handler(async () => {
+    const res = await fetch(README_URL)
+    if (!res.ok) throw new Error(`Failed to fetch README: ${res.status}`)
+    return await res.text()
+  })
 
 function Markdown() {
   const cached = isServer
@@ -74,11 +76,14 @@ function Markdown() {
   )
   const [serverReadme, setServerReadme] = createSignal<string>()
   const [serverLoading, setServerLoading] = createSignal(false)
+  const [useServerFallback, setUseServerFallback] = createSignal(false)
 
+  // 客户端超时兜底
   onMount(() => {
     if (readme()) return
     const timer = setTimeout(() => {
-      if (readme()) return
+      if (readme() || useServerFallback()) return
+      setUseServerFallback(true)
       setServerLoading(true)
       getFastCapReadme()
         .then(setServerReadme)
@@ -86,6 +91,18 @@ function Markdown() {
         .finally(() => setServerLoading(false))
     }, CLIENT_TIMEOUT_MS)
     return () => clearTimeout(timer)
+  })
+
+  // 客户端失败兜底
+  createEffect(() => {
+    if (readme.error && !useServerFallback() && !serverReadme()) {
+      setUseServerFallback(true)
+      setServerLoading(true)
+      getFastCapReadme()
+        .then(setServerReadme)
+        .catch(() => {})
+        .finally(() => setServerLoading(false))
+    }
   })
 
   const content = createMemo(() => {
@@ -135,7 +152,7 @@ function Markdown() {
 function ServerLoadingIndicator() {
   return (
     <div class="flex items-center gap-3 text-sm text-muted-foreground">
-      <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border border-current border-t-transparent" />
       <span>正在从服务器加载文档…</span>
     </div>
   )
