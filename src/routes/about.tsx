@@ -5,14 +5,13 @@ import {
   Suspense,
   createEffect,
   createMemo,
-  createResource,
   createSignal,
   onMount,
 } from 'solid-js'
 import { isServer } from 'solid-js/web'
-import type { Setter } from 'solid-js'
 import { createServerFn } from '@tanstack/solid-start'
 import { staticFunctionMiddleware } from '@tanstack/start-static-server-functions'
+import { useQuery } from '@tanstack/solid-query'
 import { fastcapHighlighter } from '~/lib/highlighter'
 
 export const Route = createFileRoute('/about')({
@@ -24,32 +23,6 @@ const README_URL =
 const CACHE_KEY = 'fastcap-readme-cache'
 const CLIENT_TIMEOUT_MS = 2000
 
-function createCachedSignal(
-  key: string,
-  init: string | undefined,
-): [() => string | undefined, Setter<string | undefined>] {
-  const [get, set] = createSignal(init)
-  return [
-    get,
-    ((
-      value:
-        | string
-        | undefined
-        | ((prev: string | undefined) => string | undefined),
-    ) => {
-      const next = typeof value === 'function' ? value(get()) : value
-      if (!isServer) {
-        try {
-          if (next !== undefined) localStorage.setItem(key, next)
-        } catch {
-          // localStorage may be unavailable (private browsing); ignore
-        }
-      }
-      return set(value)
-    }) as unknown as Setter<string | undefined>,
-  ]
-}
-
 const getFastCapReadme = createServerFn({ method: 'GET' })
   .middleware([staticFunctionMiddleware])
   .handler(async () => {
@@ -58,31 +31,43 @@ const getFastCapReadme = createServerFn({ method: 'GET' })
     return await res.text()
   })
 
+async function fetchReadmeClient(): Promise<string> {
+  const res = await fetch(README_URL)
+  if (!res.ok) throw new Error(`Failed to fetch README: ${res.status}`)
+  const text = await res.text()
+  if (!isServer) {
+    try {
+      localStorage.setItem(CACHE_KEY, text)
+    } catch {
+      // localStorage may be unavailable (private browsing); ignore
+    }
+  }
+  return text
+}
+
 function Markdown() {
   const cached = isServer
     ? undefined
     : (localStorage.getItem(CACHE_KEY) ?? undefined)
-  const [readme] = createResource<string, string>(
-    () => README_URL,
-    async (url) => {
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(`Failed to fetch README: ${res.status}`)
-      return await res.text()
-    },
-    {
-      initialValue: cached,
-      storage: (init) => createCachedSignal(CACHE_KEY, init),
-    },
-  )
+
+  const query = useQuery(() => ({
+    queryKey: ['fastcap-readme'],
+    queryFn: fetchReadmeClient,
+    initialData: cached,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    networkMode: 'offlineFirst',
+  }))
+
   const [serverReadme, setServerReadme] = createSignal<string>()
   const [serverLoading, setServerLoading] = createSignal(false)
   const [useServerFallback, setUseServerFallback] = createSignal(false)
 
   // 客户端超时兜底
   onMount(() => {
-    if (readme()) return
+    if (query.data) return
     const timer = setTimeout(() => {
-      if (readme() || useServerFallback()) return
+      if (query.data || useServerFallback()) return
       setUseServerFallback(true)
       setServerLoading(true)
       getFastCapReadme()
@@ -95,7 +80,7 @@ function Markdown() {
 
   // 客户端失败兜底
   createEffect(() => {
-    if (readme.error && !useServerFallback() && !serverReadme()) {
+    if (query.error && !useServerFallback() && !serverReadme()) {
       setUseServerFallback(true)
       setServerLoading(true)
       getFastCapReadme()
@@ -106,7 +91,7 @@ function Markdown() {
   })
 
   const content = createMemo(() => {
-    if (readme.state === 'ready') return readme()
+    if (query.data) return query.data
     return serverReadme()
   })
   const html = createMemo(() => {
@@ -126,7 +111,7 @@ function Markdown() {
         when={serverLoading()}
         fallback={
           <Show
-            when={readme.error && !serverReadme()}
+            when={query.error && !serverReadme()}
             fallback={
               <article
                 class="prose prose-slate dark:prose-invert max-w-none"
