@@ -1018,7 +1018,7 @@ async function renderCanvasTableToBlob(
       wrapCanvasText(
         measureContext,
         cell.text,
-        table.columns[index].width - 24 - (cell.imageUrl ? 54 : 0),
+        table.columns[index].width - 24 - (cell.imageUrl ? 42 : 0),
       ),
     ),
   )
@@ -1051,6 +1051,15 @@ async function renderCanvasTableToBlob(
   context.fillStyle = '#64748b'
   context.font = '13px Inter, system-ui, sans-serif'
   context.fillText(table.subtitle, padding, padding + 50)
+
+  const domain = window.location.href
+  if (domain) {
+    context.fillStyle = '#94a3b8'
+    context.font = '12px Inter, system-ui, sans-serif'
+    context.textAlign = 'right'
+    context.fillText('分享自 ' + domain, width - padding, padding + 24)
+    context.textAlign = 'start'
+  }
 
   let y = padding + titleHeight
   let x = padding
@@ -1088,13 +1097,30 @@ async function renderCanvasTableToBlob(
       let textX = x + 12
       const image = cell.imageUrl ? exportImages.get(cell.imageUrl) : undefined
       if (image) {
-        const imageSize = Math.min(42, rowHeight - rowPaddingY * 2)
+        const imageWidth = 42
+        const imageHeight = Math.min(
+          Math.round(imageWidth * (80 / 56)),
+          rowHeight - rowPaddingY * 2,
+        )
         context.save()
-        roundedRect(context, x + 12, y + rowPaddingY, imageSize, imageSize, 6)
+        roundedRect(
+          context,
+          x + 12,
+          y + rowPaddingY,
+          imageWidth,
+          imageHeight,
+          6,
+        )
         context.clip()
-        context.drawImage(image, x + 12, y + rowPaddingY, imageSize, imageSize)
+        context.drawImage(
+          image,
+          x + 12,
+          y + rowPaddingY,
+          imageWidth,
+          imageHeight,
+        )
         context.restore()
-        textX += imageSize + 12
+        textX += imageWidth + 12
       }
       lines.forEach((line, lineIndex) => {
         context.fillText(
