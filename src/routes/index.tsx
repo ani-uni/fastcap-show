@@ -449,7 +449,7 @@ function App() {
   }
 
   return (
-    <main class="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-4 py-8 lg:px-6">
+    <main class="mx-auto flex w-full max-w-[1440px] max-h-[calc(100vh-4rem)] flex-col gap-6 px-4 py-8 lg:px-6">
       <Show when={SonnerToaster()}>
         {(Toaster) => {
           const ToastComponent = Toaster()

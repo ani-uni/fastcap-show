@@ -27,7 +27,7 @@ const navItems: Array<NavItem> = [
 
 export default function Header() {
   return (
-    <header class="border-b border-border bg-background/80 backdrop-blur-sm">
+    <header class="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
       <div class="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
         <Link
           to="/"
