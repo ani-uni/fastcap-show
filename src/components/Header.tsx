@@ -48,7 +48,7 @@ export default function Header() {
           to="/"
           class="flex items-center gap-2 font-semibold tracking-tight"
         >
-          <span class="h-2.5 w-2.5 rounded-full bg-primary" />
+          <img src="/favicon.svg" alt="" class="h-6 w-6" />
           FastCap Show
         </Link>
 

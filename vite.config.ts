@@ -260,7 +260,7 @@ export default defineConfig({
   resolve: { tsconfigPaths: true },
   plugins: lazyPlugins(() => [
     devtools(),
-    nitro(),
+    nitro({ compressPublicAssets: true }),
     tailwindcss(),
     tanstackStart(),
     solidPlugin({ ssr: true }),

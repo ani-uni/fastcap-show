@@ -5,6 +5,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+.dark img[src$='.svg'] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 body {
   @apply m-0;
   font-family:

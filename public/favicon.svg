@@ -1,0 +1,38 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 1024 1024"
+  fill="none">
+
+  <!-- Horizontal line -->
+  <path
+    d="M64 512H900"
+    stroke="#000"
+    stroke-width="28"
+    stroke-linecap="square" />
+
+  <!-- Arrow -->
+  <path
+    d="M900 472L980 512L900 552Z"
+    fill="#000" />
+
+  <!-- Fast "F" -->
+  <path
+    d="
+      M540 230
+      L780 230
+      L730 290
+      L610 290
+      L570 350
+      L710 350
+      L670 410
+      L530 410
+      L500 455
+      L600 455
+      L470 720
+      L310 900
+      L445 540
+      L400 540
+      Z"
+    fill="#000" />
+
+</svg>
