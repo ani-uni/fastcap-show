@@ -167,6 +167,19 @@ function App() {
   const [SonnerToaster, setSonnerToaster] =
     createSignal<Component<ToasterProps>>()
   let metadataRequestId = 0
+  const [resourceSectionRef, setResourceSectionRef] =
+    createSignal<HTMLDivElement>()
+
+  createEffect(() => {
+    if (parsed() && resourceSectionRef()) {
+      setTimeout(() => {
+        resourceSectionRef()?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      }, 100)
+    }
+  })
   const inputForm = createForm(() => ({
     defaultValues: {
       input: starterInput,
@@ -549,7 +562,10 @@ function App() {
           </Show>
         </div>
 
-        <div class="relative min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div
+          ref={setResourceSectionRef}
+          class="relative min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+        >
           <Show
             when={parsed()}
             fallback={
