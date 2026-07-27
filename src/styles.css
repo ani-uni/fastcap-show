@@ -24,14 +24,14 @@ code {
   width: 100%;
   resize: vertical;
   overflow: hidden;
-  border: 1px solid rgb(226 232 240);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
-  background: rgb(248 250 252);
+  background: var(--muted);
 }
 
 .fastcap-code-editor:focus-within {
-  border-color: rgb(148 163 184);
-  background: white;
+  border-color: var(--ring);
+  background: var(--background);
 }
 
 .fastcap-code-highlight,
@@ -53,51 +53,51 @@ code {
 
 .fastcap-code-highlight {
   pointer-events: none;
-  color: rgb(15 23 42);
+  color: var(--foreground);
 }
 
 .fastcap-code-input {
   resize: none;
   background: transparent;
   color: transparent;
-  caret-color: rgb(15 23 42);
+  caret-color: var(--foreground);
   outline: none;
 }
 
 .fastcap-code-input::selection {
-  background: rgb(191 219 254 / 0.65);
+  background: color-mix(in oklch, var(--primary) 30%, transparent);
   color: transparent;
 }
 
 .th-comment {
-  color: rgb(100 116 139);
+  color: var(--muted-foreground);
 }
 
 .th-heading,
 .th-keyword,
 .th-tag {
-  color: rgb(124 58 237);
+  color: oklch(0.65 0.25 300);
   font-weight: 600;
 }
 
 .th-property,
 .th-attr {
-  color: rgb(2 132 199);
+  color: oklch(0.6 0.2 250);
 }
 
 .th-string,
 .th-link {
-  color: rgb(22 163 74);
+  color: oklch(0.6 0.2 150);
 }
 
 .th-number,
 .th-literal {
-  color: rgb(234 88 12);
+  color: oklch(0.65 0.2 50);
 }
 
 .th-meta,
 .th-operator {
-  color: rgb(71 85 105);
+  color: var(--muted-foreground);
 }
 
 .th-variable,
@@ -105,7 +105,36 @@ code {
 .th-function,
 .th-selector,
 .th-command {
-  color: rgb(190 24 93);
+  color: oklch(0.6 0.25 350);
+}
+
+.dark .th-heading,
+.dark .th-keyword,
+.dark .th-tag {
+  color: oklch(0.75 0.2 300);
+}
+
+.dark .th-property,
+.dark .th-attr {
+  color: oklch(0.7 0.18 250);
+}
+
+.dark .th-string,
+.dark .th-link {
+  color: oklch(0.7 0.18 150);
+}
+
+.dark .th-number,
+.dark .th-literal {
+  color: oklch(0.75 0.18 50);
+}
+
+.dark .th-variable,
+.dark .th-type,
+.dark .th-function,
+.dark .th-selector,
+.dark .th-command {
+  color: oklch(0.7 0.2 350);
 }
 
 .th-inserted {

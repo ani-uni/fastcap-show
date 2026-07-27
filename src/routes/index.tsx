@@ -465,20 +465,20 @@ function App() {
       </Show>
 
       <section class="grid gap-6 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.4fr)]">
-        <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="rounded-lg border border-border bg-background p-5 shadow-sm">
           <div class="mb-4 flex items-start justify-between gap-4">
             <div>
-              <p class="mb-1 text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
+              <p class="mb-1 text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
                 FastCap
               </p>
-              <h1 class="m-0 text-2xl font-semibold tracking-tight text-slate-950">
+              <h1 class="m-0 text-2xl font-semibold tracking-tight text-foreground">
                 配置查看器
               </h1>
             </div>
             <div class="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                class="rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
                 onClick={createEmptyConfig}
               >
                 创建空配置
@@ -486,7 +486,7 @@ function App() {
               <button
                 type="button"
                 disabled={isParsing()}
-                class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                class="rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
                 onClick={readClipboardAndParse}
               >
                 读取剪贴板
@@ -494,7 +494,7 @@ function App() {
               <button
                 type="button"
                 disabled={isParsing()}
-                class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                class="rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
                 onClick={parseInput}
               >
                 {isParsing() ? '解析中…' : '解析'}
@@ -520,9 +520,9 @@ function App() {
 
           <Show when={parsed()}>
             {(data) => (
-              <div class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div class="mt-5 rounded-lg border border-border bg-muted p-4">
                 <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div class="flex rounded-md border border-slate-200 bg-white p-1">
+                  <div class="flex rounded-md border border-border bg-background p-1">
                     <FormatButton
                       active={exportFormat() === 'toml'}
                       onClick={() => setExportFormat('toml')}
@@ -538,7 +538,7 @@ function App() {
                   </div>
                   <button
                     type="button"
-                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                    class="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition hover:bg-muted"
                     onClick={copyExport}
                   >
                     复制导出
@@ -553,7 +553,7 @@ function App() {
                   minHeightClass="min-h-48"
                   textSizeClass="text-xs"
                 />
-                <p class="mt-2 text-xs text-slate-500">
+                <p class="mt-2 text-xs text-muted-foreground">
                   规范化导出，不保留原始注释、空行或字段顺序。当前输入识别为{' '}
                   {data().format.toUpperCase()}。
                 </p>
@@ -564,7 +564,7 @@ function App() {
 
         <div
           ref={setResourceSectionRef}
-          class="relative min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+          class="relative min-w-0 rounded-lg border border-border bg-background p-5 shadow-sm"
         >
           <Show
             when={parsed()}
@@ -572,14 +572,14 @@ function App() {
               <Show
                 when={draft()}
                 fallback={
-                  <div class="flex min-h-[560px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                  <div class="flex min-h-[560px] items-center justify-center rounded-lg border border-dashed border-border bg-muted text-sm text-muted-foreground">
                     粘贴配置后点击解析，或创建空配置后从可视化编辑器开始。
                   </div>
                 }
               >
                 {(draftData) => (
                   <div class="flex min-w-0 flex-col gap-4">
-                    <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+                    <div class="rounded-lg border border-dashed border-border bg-muted px-4 py-5 text-sm text-muted-foreground">
                       当前是空配置草稿。补充资源、剧集引用和片段后点击“应用到配置”生成
                       TOML。
                     </div>
@@ -608,7 +608,7 @@ function App() {
                     <StatCard label="片段" value={data().stats.clips} />
                   </div>
 
-                  <div class="flex rounded-md border border-slate-200 bg-slate-50 p-1">
+                  <div class="flex rounded-md border border-border bg-muted p-1">
                     <ModeButton
                       active={viewMode() === 'episode'}
                       onClick={() => selectViewMode('episode')}
@@ -625,12 +625,12 @@ function App() {
                   <button
                     type="button"
                     disabled={isExportingImage()}
-                    class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    class="rounded-md border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
                     onClick={openImageExportPreview}
                   >
                     {isExportingImage() ? '生成中…' : '导出图片'}
                   </button>
-                  <label class="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                  <label class="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm font-medium text-foreground">
                     <input
                       type="checkbox"
                       checked={showEpisodeImages()}
@@ -650,7 +650,7 @@ function App() {
                   )}
                 </Show>
 
-                <div class="min-w-0 bg-white">
+                <div class="min-w-0 bg-background">
                   <Show
                     when={viewMode() === 'episode'}
                     fallback={
@@ -691,10 +691,10 @@ function App() {
           </Show>
 
           <Show when={isParsing()}>
-            <div class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[2px]">
-              <div class="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
-                <span class="h-3 w-3 animate-pulse rounded-full bg-slate-900" />
-                <span class="text-sm font-medium text-slate-700">
+            <div class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/80 backdrop-blur-[2px]">
+              <div class="flex items-center gap-3 rounded-full border border-border bg-background px-4 py-2 shadow-sm">
+                <span class="h-3 w-3 animate-pulse rounded-full bg-foreground" />
+                <span class="text-sm font-medium text-foreground">
                   正在解析 fastcap…
                 </span>
               </div>
@@ -704,29 +704,29 @@ function App() {
       </section>
 
       <Show when={isImageExportModalOpen()}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4">
+          <div class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
               <div>
-                <h2 class="m-0 text-lg font-semibold text-slate-950">
+                <h2 class="m-0 text-lg font-semibold text-foreground">
                   导出图片预览
                 </h2>
-                <p class="mt-1 mb-0 text-xs text-slate-500">
+                <p class="mt-1 mb-0 text-xs text-muted-foreground">
                   当前导出内容：
                   {viewMode() === 'episode' ? '依据剧集' : '依据索引'}
                 </p>
               </div>
               <button
                 type="button"
-                class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                class="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition hover:bg-muted"
                 onClick={closeImageExportModal}
               >
                 关闭
               </button>
             </div>
 
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
-              <div class="flex rounded-md border border-slate-200 bg-white p-1">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted px-5 py-3">
+              <div class="flex rounded-md border border-border bg-background p-1">
                 <FormatButton
                   active={imageExportFormat() === 'png'}
                   onClick={() => changeImageExportFormat('png')}
@@ -744,18 +744,18 @@ function App() {
               <button
                 type="button"
                 disabled={!imageExportBlob() || isExportingImage()}
-                class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                class="rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:bg-card disabled:cursor-not-allowed disabled:opacity-70"
                 onClick={downloadImageExport}
               >
                 下载 {imageExportFormat().toUpperCase()}
               </button>
             </div>
 
-            <div class="min-h-0 overflow-auto bg-slate-100 p-5">
+            <div class="min-h-0 overflow-auto bg-muted p-5">
               <Show
                 when={imageExportPreviewUrl()}
                 fallback={
-                  <div class="flex min-h-64 items-center justify-center text-sm text-slate-500">
+                  <div class="flex min-h-64 items-center justify-center text-sm text-muted-foreground">
                     正在生成预览…
                   </div>
                 }
@@ -764,7 +764,7 @@ function App() {
                   <img
                     src={previewUrl()}
                     alt="导出图片预览"
-                    class="mx-auto max-w-full rounded-lg border border-slate-200 bg-white shadow-sm"
+                    class="mx-auto max-w-full rounded-lg border border-border bg-background shadow-sm"
                   />
                 )}
               </Show>
@@ -1359,7 +1359,7 @@ function FastCapEditor(props: {
   }
 
   return (
-    <div class="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
+    <div class="min-w-0 rounded-lg border border-border bg-background p-4">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex min-w-0 items-start gap-2">
           <button
@@ -1368,7 +1368,7 @@ function FastCapEditor(props: {
               props.collapsed ? '展开可视化编辑器' : '折叠可视化编辑器'
             }
             title={props.collapsed ? '展开' : '折叠'}
-            class="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+            class="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground"
             onClick={props.onToggleCollapsed}
           >
             <ChevronDown
@@ -1377,10 +1377,10 @@ function FastCapEditor(props: {
             />
           </button>
           <div class="min-w-0">
-            <h2 class="m-0 text-lg font-semibold text-slate-950">
+            <h2 class="m-0 text-lg font-semibold text-foreground">
               可视化编辑器
             </h2>
-            <p class="mt-1 mb-0 text-xs text-slate-500">
+            <p class="mt-1 mb-0 text-xs text-muted-foreground">
               改动保存在草稿中，点击应用后才会更新配置文本和表格。
             </p>
           </div>
@@ -1389,14 +1389,14 @@ function FastCapEditor(props: {
           <Show when={!props.collapsed}>
             <button
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+              class="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition hover:bg-muted"
               onClick={addResource}
             >
               新增资源
             </button>
             <button
               type="button"
-              class="rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              class="rounded-md bg-foreground px-3 py-1.5 text-sm font-semibold text-background transition hover:bg-card"
               onClick={props.onApply}
             >
               应用到配置
@@ -1418,7 +1418,7 @@ function FastCapEditor(props: {
           <Show
             when={props.draft.f.length > 0}
             fallback={
-              <div class="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+              <div class="rounded-md border border-dashed border-border bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
                 还没有资源。点击“新增资源”开始创建 fastcap 配置。
               </div>
             }
@@ -1556,27 +1556,27 @@ function ResourceEditor(props: {
   }
 
   return (
-    <section class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <section class="rounded-lg border border-border bg-muted p-4">
       <div class="mb-4 flex flex-wrap items-end gap-3">
-        <label class="flex min-w-32 flex-1 flex-col gap-1 text-xs font-semibold text-slate-500">
+        <label class="flex min-w-32 flex-1 flex-col gap-1 text-xs font-semibold text-muted-foreground">
           索引类型
           <input
             value={props.resource.i}
             readOnly
-            class="rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm font-medium text-slate-600"
+            class="rounded-md border border-border bg-muted px-2 py-1.5 text-sm font-medium text-muted-foreground"
           />
         </label>
-        <label class="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-semibold text-slate-500">
+        <label class="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-semibold text-muted-foreground">
           资源 ID
           <input
             value={props.resource.id}
             onInput={(event) => setResource({ id: event.currentTarget.value })}
-            class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+            class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
           />
         </label>
         <button
           type="button"
-          class="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+          class="rounded-md border border-red-200 bg-background px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
           onClick={props.onDelete}
         >
           删除资源
@@ -1584,12 +1584,12 @@ function ResourceEditor(props: {
       </div>
 
       <div class="grid gap-4 2xl:grid-cols-2">
-        <div class="rounded-md border border-slate-200 bg-white p-3">
+        <div class="rounded-md border border-border bg-background p-3">
           <div class="mb-3 flex items-center justify-between gap-3">
-            <h3 class="m-0 text-sm font-semibold text-slate-950">剧集表</h3>
+            <h3 class="m-0 text-sm font-semibold text-foreground">剧集表</h3>
             <button
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 transition hover:bg-slate-100"
+              class="rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-foreground transition hover:bg-muted"
               onClick={addEpisode}
             >
               新增剧集
@@ -1602,8 +1602,8 @@ function ResourceEditor(props: {
                 const refs = () => entry()[1]
 
                 return (
-                  <div class="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[5rem_minmax(0,1fr)]">
-                    <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                  <div class="grid gap-2 rounded-md border border-border bg-muted p-3 md:grid-cols-[5rem_minmax(0,1fr)]">
+                    <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
                       Ep ID
                       <input
                         type="number"
@@ -1612,11 +1612,11 @@ function ResourceEditor(props: {
                         onChange={(event) =>
                           updateEpisodeId(id(), event.currentTarget.value)
                         }
-                        class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                        class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                       />
                     </label>
                     <div class="grid gap-2 md:grid-cols-2">
-                      <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                      <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
                         bgmtv_epid
                         <input
                           value={refs().bgmtv_epid ?? ''}
@@ -1625,10 +1625,10 @@ function ResourceEditor(props: {
                               bgmtv_epid: event.currentTarget.value,
                             })
                           }
-                          class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                          class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                         />
                       </label>
-                      <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                      <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
                         tmdb_urlc
                         <input
                           value={refs().tmdb_urlc ?? ''}
@@ -1637,7 +1637,7 @@ function ResourceEditor(props: {
                               tmdb_urlc: event.currentTarget.value,
                             })
                           }
-                          class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                          class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                         />
                       </label>
                     </div>
@@ -1647,7 +1647,7 @@ function ResourceEditor(props: {
                         disabled={props.resource.p.some(
                           (clip) => clip[3] === Number.parseInt(id(), 10),
                         )}
-                        class="rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        class="rounded-md border border-red-200 bg-background px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => deleteEpisode(id())}
                       >
                         删除剧集
@@ -1660,12 +1660,12 @@ function ResourceEditor(props: {
           </div>
         </div>
 
-        <div class="rounded-md border border-slate-200 bg-white p-3">
+        <div class="rounded-md border border-border bg-background p-3">
           <div class="mb-3 flex items-center justify-between gap-3">
-            <h3 class="m-0 text-sm font-semibold text-slate-950">片段</h3>
+            <h3 class="m-0 text-sm font-semibold text-foreground">片段</h3>
             <button
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 transition hover:bg-slate-100"
+              class="rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-foreground transition hover:bg-muted"
               onClick={addClip}
             >
               新增片段
@@ -1706,14 +1706,14 @@ function ClipEditor(props: {
   }
 
   return (
-    <div class="rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div class="rounded-md border border-border bg-muted p-3">
       <div class="mb-2 flex items-center justify-between gap-3">
-        <p class="m-0 text-xs font-semibold text-slate-500">
+        <p class="m-0 text-xs font-semibold text-muted-foreground">
           Clip {props.clipIndex}
         </p>
         <button
           type="button"
-          class="rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+          class="rounded-md border border-red-200 bg-background px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50"
           onClick={props.onDelete}
         >
           删除片段
@@ -1735,14 +1735,14 @@ function ClipEditor(props: {
           value={props.clip[2]}
           onChange={(value) => updateValue(2, value)}
         />
-        <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+        <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           归属 Ep
           <select
             value={String(props.clip[3])}
             onChange={(event) =>
               updateValue(3, Number.parseInt(event.currentTarget.value, 10))
             }
-            class="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+            class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
           >
             <For each={props.episodeIds}>
               {(id) => <option value={String(id)}>{id}</option>}
@@ -1791,19 +1791,19 @@ function TimestampField(props: {
   }
 
   return (
-    <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+    <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
       {props.label}
       <input
         value={textValue()}
         onChange={(event) => applyTimestamp(event.currentTarget.value)}
-        class="rounded-md border border-slate-200 bg-white px-2 py-1.5 font-mono text-sm text-slate-900"
+        class="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm text-foreground"
       />
       <input
         type="number"
         min="0"
         value={String(props.value)}
         onInput={(event) => applyMilliseconds(event.currentTarget.value)}
-        class="rounded-md border border-slate-200 bg-white px-2 py-1.5 font-mono text-xs text-slate-700"
+        class="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground"
       />
       <Show when={error()}>
         {(message) => <span class="text-xs text-red-600">{message()}</span>}
@@ -1837,9 +1837,9 @@ function EpisodeTable(props: {
   showImages: boolean
 }) {
   return (
-    <div class="overflow-x-auto rounded-lg border border-slate-200">
+    <div class="overflow-x-auto rounded-lg border border-border">
       <table class="w-full min-w-[980px] border-collapse text-left text-sm">
-        <thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+        <thead class="bg-muted text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           <tr>
             <th class="px-3 py-3">Ep</th>
             <th class="px-3 py-3">剧集信息</th>
@@ -1859,11 +1859,11 @@ function EpisodeTable(props: {
               >
                 <For each={episode.clips}>
                   {(clip, clipOffset) => (
-                    <tr class="border-t border-slate-200 align-top">
-                      <td class="px-3 py-3 font-mono text-slate-700">
+                    <tr class="border-t border-border align-top">
+                      <td class="px-3 py-3 font-mono text-foreground">
                         <Show when={clipOffset() === 0}>
                           {episode.tempEpId}
-                          <span class="ml-1 text-xs text-slate-400">
+                          <span class="ml-1 text-xs text-muted-foreground">
                             f{episode.resourceIndex}
                           </span>
                         </Show>
@@ -1878,21 +1878,21 @@ function EpisodeTable(props: {
                           />
                         </Show>
                       </td>
-                      <td class="px-3 py-3 font-mono text-xs text-slate-600">
+                      <td class="px-3 py-3 font-mono text-xs text-muted-foreground">
                         {episode.indexType}:{episode.resourceId}
                       </td>
-                      <td class="px-3 py-3 font-mono text-slate-700">
+                      <td class="px-3 py-3 font-mono text-foreground">
                         {clip.clipIndex}
                       </td>
-                      <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                      <td class="px-3 py-3 font-mono text-xs text-foreground">
                         {formatMilliseconds(clip.videoBegin)} →{' '}
                         {formatMilliseconds(clip.videoEnd)}
                       </td>
-                      <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                      <td class="px-3 py-3 font-mono text-xs text-foreground">
                         {formatMilliseconds(clip.realBegin)} →{' '}
                         {formatMilliseconds(clip.realEnd)}
                       </td>
-                      <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                      <td class="px-3 py-3 font-mono text-xs text-foreground">
                         {formatMilliseconds(clip.offset)}
                       </td>
                     </tr>
@@ -1914,10 +1914,10 @@ function EpisodeOnlyRow(props: {
   showImages: boolean
 }) {
   return (
-    <tr class="border-t border-slate-200 align-top">
-      <td class="px-3 py-3 font-mono text-slate-700">
+    <tr class="border-t border-border align-top">
+      <td class="px-3 py-3 font-mono text-foreground">
         {props.episode.tempEpId}
-        <span class="ml-1 text-xs text-slate-400">
+        <span class="ml-1 text-xs text-muted-foreground">
           f{props.episode.resourceIndex}
         </span>
       </td>
@@ -1929,13 +1929,13 @@ function EpisodeOnlyRow(props: {
           showImage={props.showImages}
         />
       </td>
-      <td class="px-3 py-3 font-mono text-xs text-slate-600">
+      <td class="px-3 py-3 font-mono text-xs text-muted-foreground">
         {props.episode.indexType}:{props.episode.resourceId}
       </td>
-      <td class="px-3 py-3 text-slate-400">无片段</td>
-      <td class="px-3 py-3 text-slate-400">—</td>
-      <td class="px-3 py-3 text-slate-400">—</td>
-      <td class="px-3 py-3 text-slate-400">—</td>
+      <td class="px-3 py-3 text-muted-foreground">无片段</td>
+      <td class="px-3 py-3 text-muted-foreground">—</td>
+      <td class="px-3 py-3 text-muted-foreground">—</td>
+      <td class="px-3 py-3 text-muted-foreground">—</td>
     </tr>
   )
 }
@@ -1947,9 +1947,9 @@ function IndexTable(props: {
   showImages: boolean
 }) {
   return (
-    <div class="overflow-x-auto rounded-lg border border-slate-200">
+    <div class="overflow-x-auto rounded-lg border border-border">
       <table class="w-full min-w-[1080px] border-collapse text-left text-sm">
-        <thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+        <thead class="bg-muted text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           <tr>
             <th class="px-3 py-3">索引</th>
             <th class="px-3 py-3">Clip</th>
@@ -1963,18 +1963,18 @@ function IndexTable(props: {
         <tbody>
           <For each={props.rows}>
             {(row) => (
-              <tr class="border-t border-slate-200 align-top">
-                <td class="px-3 py-3 font-mono text-xs text-slate-600">
+              <tr class="border-t border-border align-top">
+                <td class="px-3 py-3 font-mono text-xs text-muted-foreground">
                   f{row.resourceIndex} · {row.indexType}:{row.resourceId}
                 </td>
-                <td class="px-3 py-3 font-mono text-slate-700">
+                <td class="px-3 py-3 font-mono text-foreground">
                   p{row.clipIndex}
                 </td>
-                <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                <td class="px-3 py-3 font-mono text-xs text-foreground">
                   {formatMilliseconds(row.videoBegin)} →{' '}
                   {formatMilliseconds(row.videoEnd)}
                 </td>
-                <td class="px-3 py-3 font-mono text-slate-700">
+                <td class="px-3 py-3 font-mono text-foreground">
                   {row.tempEpId}
                 </td>
                 <td class="max-w-72 px-3 py-3">
@@ -1994,11 +1994,11 @@ function IndexTable(props: {
                     showImage={props.showImages}
                   />
                 </td>
-                <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                <td class="px-3 py-3 font-mono text-xs text-foreground">
                   {formatMilliseconds(row.realBegin)} →{' '}
                   {formatMilliseconds(row.realEnd)}
                 </td>
-                <td class="px-3 py-3 font-mono text-xs text-slate-700">
+                <td class="px-3 py-3 font-mono text-xs text-foreground">
                   {formatMilliseconds(row.offset)}
                 </td>
               </tr>
@@ -2027,17 +2027,17 @@ function EpisodeMeta(props: {
             crossorigin="anonymous"
             referrerpolicy="no-referrer"
             loading="lazy"
-            class="h-20 w-14 flex-none rounded border border-slate-200 object-cover"
+            class="h-20 w-14 flex-none rounded border border-border object-cover"
           />
         )}
       </Show>
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
-          <p class="m-0 font-medium text-slate-950">
+          <p class="m-0 font-medium text-foreground">
             {props.metadata?.title ?? `EP ${props.episode.tempEpId}`}
           </p>
           <Show when={props.loading}>
-            <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">
+            <span class="rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
               加载中
             </span>
           </Show>
@@ -2055,11 +2055,11 @@ function EpisodeMeta(props: {
             props.metadata?.duration
           }
         >
-          <p class="mt-1 mb-0 text-xs text-slate-700">
+          <p class="mt-1 mb-0 text-xs text-foreground">
             {formatEpisodeDetails(props.metadata)}
           </p>
         </Show>
-        <p class="mt-1 mb-0 text-xs text-slate-500">
+        <p class="mt-1 mb-0 text-xs text-muted-foreground">
           {props.metadata?.subtitle || formatRefs(props.episode.refs)}
         </p>
         <Show when={props.metadata?.error}>
@@ -2072,9 +2072,9 @@ function EpisodeMeta(props: {
 
 function StatCard(props: { label: string; value: number }) {
   return (
-    <div class="min-w-20 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-      <p class="m-0 text-xs text-slate-500">{props.label}</p>
-      <p class="m-0 text-xl font-semibold text-slate-950">{props.value}</p>
+    <div class="min-w-20 rounded-md border border-border bg-muted px-3 py-2">
+      <p class="m-0 text-xs text-muted-foreground">{props.label}</p>
+      <p class="m-0 text-xl font-semibold text-foreground">{props.value}</p>
     </div>
   )
 }
@@ -2088,8 +2088,8 @@ function ModeButton(props: {
     <button
       type="button"
       classList={{
-        'bg-white text-slate-950 shadow-sm': props.active,
-        'text-slate-500 hover:text-slate-900': !props.active,
+        'bg-background text-foreground shadow-sm': props.active,
+        'text-muted-foreground hover:text-foreground': !props.active,
       }}
       class="rounded px-3 py-1.5 text-sm font-semibold transition"
       onClick={props.onClick}
@@ -2108,8 +2108,8 @@ function FormatButton(props: {
     <button
       type="button"
       classList={{
-        'bg-slate-950 text-white': props.active,
-        'text-slate-500 hover:text-slate-900': !props.active,
+        'bg-foreground text-background': props.active,
+        'text-muted-foreground hover:text-foreground': !props.active,
       }}
       class="rounded px-3 py-1 text-sm font-semibold transition"
       onClick={props.onClick}

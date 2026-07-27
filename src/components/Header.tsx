@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/solid-router'
 import { For } from 'solid-js'
+import { useTheme } from '~/lib/theme'
 
 interface InternalLink {
   type: 'internal'
@@ -25,7 +26,21 @@ const navItems: Array<NavItem> = [
   },
 ]
 
+const themeLabels = {
+  light: '日间',
+  dark: '夜间',
+  system: '设备',
+} as const
+
+const themeIcons = {
+  light: '☀',
+  dark: '☾',
+  system: '◐',
+} as const
+
 export default function Header() {
+  const { mode, setMode } = useTheme()
+
   return (
     <header class="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
       <div class="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
@@ -40,6 +55,27 @@ export default function Header() {
         <nav class="ml-auto flex items-center gap-1 text-sm">
           <For each={navItems}>{(item) => <NavLink item={item} />}</For>
         </nav>
+
+        <div class="flex items-center rounded-md border border-border bg-muted/50 p-0.5">
+          <For each={['light', 'dark', 'system'] as const}>
+            {(theme) => (
+              <button
+                type="button"
+                onClick={() => setMode(theme)}
+                class="rounded px-2 py-1 text-xs font-medium transition-colors"
+                classList={{
+                  'bg-background text-foreground shadow-sm': mode() === theme,
+                  'text-muted-foreground hover:text-foreground':
+                    mode() !== theme,
+                }}
+                aria-pressed={mode() === theme}
+              >
+                <span class="mr-1">{themeIcons[theme]}</span>
+                {themeLabels[theme]}
+              </button>
+            )}
+          </For>
+        </div>
       </div>
     </header>
   )
