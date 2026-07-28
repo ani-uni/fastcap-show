@@ -51,7 +51,7 @@ const getClientEpisodeMetadata = createClientOnlyFn(
   },
 )
 
-const starterInput = `\`\`\`fastcap
+const defaultStarterInput = `\`\`\`fastcap
 [[f]]
 i = "bili_cid"
 id = "37322032240"
@@ -180,9 +180,20 @@ function App() {
       }, 100)
     }
   })
+  const getQueryParams = () => {
+    const params = new URLSearchParams(window.location.search)
+    return {
+      i: params.get('i') ?? '',
+      id: params.get('id') ?? '',
+    }
+  }
+  const queryIndexType = () => getQueryParams().i
+  const queryId = () => getQueryParams().id
+  const hasQueryConfig = () => !!queryIndexType() && !!queryId()
+
   const inputForm = createForm(() => ({
     defaultValues: {
-      input: starterInput,
+      input: defaultStarterInput,
     },
     onSubmit: ({ value }) => {
       const result = parseFastCapInput(value.input)
@@ -232,6 +243,20 @@ function App() {
     const savedEditorCollapsed = localStorage.getItem(editorCollapsedStorageKey)
     if (savedEditorCollapsed !== null) {
       setIsEditorCollapsed(savedEditorCollapsed === 'true')
+    }
+
+    // query 参数创建初始资源草稿（不解析，等待用户手动操作）
+    if (hasQueryConfig()) {
+      setDraft({
+        f: [
+          {
+            i: queryIndexType() as FastCapResource['i'],
+            id: queryId(),
+            p: [],
+            t: {},
+          },
+        ],
+      })
     }
   })
 
