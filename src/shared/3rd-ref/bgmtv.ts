@@ -139,6 +139,11 @@ const BgmTvApiSchema = {
 
 export class BgmTv {
   public api_url = new URL(env.VITE_BGMTV_API_URL ?? 'https://api.bgm.tv')
+  constructor(api_url?: string | URL) {
+    if (api_url) {
+      this.api_url = new URL(api_url)
+    }
+  }
   kyInstance() {
     const hds = headers.get('app')
     hds.set('Accept', 'application/json')

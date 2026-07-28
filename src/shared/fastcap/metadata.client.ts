@@ -1,12 +1,22 @@
+import { env } from '~/env'
 import { BgmTv } from '../3rd-ref/bgmtv'
 import { TMDB, parseTMDBUrlC } from '../3rd-ref/tmdb'
 import type { FastCapEpisodeMetadata } from './metadata.functions'
+
+function replaceBgmDomain(url: string): string {
+  const mirror = env.VITE_BGMTV_MIRROR
+  if (!mirror) return url
+  return url
+    .replaceAll('bgm.tv', mirror)
+    .replaceAll('bangumi.tv', mirror)
+    .replaceAll('chii.in', mirror)
+}
 
 export async function getFastCapEpisodeMetadataClient(
   key: string,
   refs: { bgmtv_epid?: string; tmdb_urlc?: string },
 ) {
-  const bgmtv = new BgmTv()
+  const bgmtv = new BgmTv(env.VITE_BGMTV_API_URL)
   const tmdb = new TMDB()
   const failures: Array<string> = []
 
@@ -31,7 +41,9 @@ export async function getFastCapEpisodeMetadataClient(
           .filter(Boolean)
           .join(' · '),
         duration: episode.duration || undefined,
-        imageUrl: subject?.images.common,
+        imageUrl: subject?.images.common
+          ? replaceBgmDomain(subject.images.common)
+          : undefined,
         subtitle: [
           `Bangumi ${refs.bgmtv_epid}`,
           episode.sort ? `sort ${episode.sort}` : undefined,

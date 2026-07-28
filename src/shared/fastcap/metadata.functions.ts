@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { BgmTv } from '../3rd-ref/bgmtv'
 import { TMDB, parseTMDBUrlC } from '../3rd-ref/tmdb'
+import { env } from '~/env'
 
 const EpisodeMetadataRequestSchema = z.object({
   episodes: z.array(
@@ -35,7 +36,7 @@ export const getFastCapEpisodeMetadata = createServerFn({ method: 'POST' })
     EpisodeMetadataRequestSchema.parse(data),
   )
   .handler(async ({ data }) => {
-    const bgmtv = new BgmTv()
+    const bgmtv = new BgmTv(env.BGMTV_API_URL)
     const tmdb = new TMDB()
 
     const entries = await Promise.all(
