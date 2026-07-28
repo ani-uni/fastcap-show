@@ -16,6 +16,7 @@ import Header from '../components/Header'
 
 import styleCss from '../styles.css?url'
 import { getContext } from '../integrations/tanstack-query/provider'
+import { env } from '~/env'
 
 function DefaultErrorComponent(props: { error: Error; reset: () => void }) {
   return (
@@ -37,6 +38,7 @@ function DefaultErrorComponent(props: { error: Error; reset: () => void }) {
 
 export const Route = createRootRouteWithContext()({
   head: () => ({
+    meta: [{ title: env.VITE_APP_TITLE ?? 'FastCap Show' }],
     links: [
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
       { rel: 'stylesheet', href: styleCss },
