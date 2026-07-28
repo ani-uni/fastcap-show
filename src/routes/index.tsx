@@ -32,6 +32,11 @@ import type {
 import { getFastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
 import type { FastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
 import { fastcapHighlighter, HighlightedTokens } from '~/lib/highlighter'
+import { SearchBox } from '~/components/SearchBox'
+import { env } from '~/env'
+import { BgmTv } from '~/shared/3rd-ref/bgmtv'
+import { TMDB } from '~/shared/3rd-ref/tmdb'
+import { searchStore } from '~/lib/search-history'
 
 export const Route = createFileRoute('/')({ component: App })
 
@@ -1541,6 +1546,236 @@ function ResourceEditor(props: {
     })
   }
 
+  // BgmTv 搜索弹窗
+  const [bgmtvModalOpen, setBgmtvModalOpen] = createSignal(false)
+  const [bgmtvResults, setBgmtvResults] = createSignal<
+    Array<{ id: number; name: string; name_cn: string }>
+  >([])
+  const [bgmtvEpisodes, setBgmtvEpisodes] = createSignal<
+    Array<{
+      id: number
+      name: string
+      name_cn: string
+      sort?: number
+      ep?: number
+    }>
+  >([])
+  const [bgmtvSelectedSubject, setBgmtvSelectedSubject] = createSignal<{
+    id: number
+    name: string
+    name_cn: string
+  } | null>(null)
+  const [bgmtvLoading, setBgmtvLoading] = createSignal(false)
+  const [bgmtvTarget, setBgmtvTarget] = createSignal<{
+    episodeId: string
+  } | null>(null)
+
+  const openBgmtvModal = (episodeId: string) => {
+    setBgmtvTarget({ episodeId })
+    setBgmtvResults([])
+    setBgmtvEpisodes([])
+    setBgmtvSelectedSubject(null)
+    setBgmtvModalOpen(true)
+  }
+  const closeBgmtvModal = () => setBgmtvModalOpen(false)
+
+  const searchBgmTv = async () => {
+    const keyword = searchStore.state.query.trim()
+    if (!keyword) return
+    setBgmtvLoading(true)
+    try {
+      const bgmtv = new BgmTv(env.VITE_BGMTV_API_URL)
+      const result = await bgmtv.searchSubjects(keyword)
+      setBgmtvResults(
+        result.v0.search.subjects['<post>'].data.map(
+          (s: { id: number; name: string; name_cn: string }) => ({
+            id: s.id,
+            name: s.name,
+            name_cn: s.name_cn,
+          }),
+        ),
+      )
+    } catch {
+      setBgmtvResults([])
+    } finally {
+      setBgmtvLoading(false)
+    }
+  }
+
+  const selectBgmTvSubject = async (subject: {
+    id: number
+    name: string
+    name_cn: string
+  }) => {
+    setBgmtvSelectedSubject(subject)
+    setBgmtvLoading(true)
+    try {
+      const bgmtv = new BgmTv(env.VITE_BGMTV_API_URL)
+      const result = await bgmtv.listEpisodes(subject.id)
+      setBgmtvEpisodes(
+        result.v0.episodes.data.map((e) => ({
+          id: e.id,
+          name: e.name,
+          name_cn: e.name_cn,
+          sort: e.sort,
+          ep: e.ep ?? undefined,
+        })),
+      )
+    } catch {
+      setBgmtvEpisodes([])
+    } finally {
+      setBgmtvLoading(false)
+    }
+  }
+
+  const selectBgmTvEpisode = (episode: { id: number }) => {
+    const target = bgmtvTarget()
+    if (!target) return
+    updateEpisodeRefs(target.episodeId, { bgmtv_epid: String(episode.id) })
+    closeBgmtvModal()
+  }
+
+  // TMDB 搜索弹窗
+  const [tmdbModalOpen, setTmdbModalOpen] = createSignal(false)
+  const [tmdbTab, setTmdbTab] = createSignal<'tv' | 'movie'>('tv')
+  const [tmdbTVResults, setTmdbTVResults] = createSignal<
+    Array<{ id: number; name: string; original_name: string }>
+  >([])
+  const [tmdbMovieResults, setTmdbMovieResults] = createSignal<
+    Array<{ id: number; title: string; original_title: string }>
+  >([])
+  const [tmdbSeasons, setTmdbSeasons] = createSignal<
+    Array<{ season_number: number; name: string; episode_count: number }>
+  >([])
+  const [tmdbEpisodes, setTmdbEpisodes] = createSignal<
+    Array<{ episode_number: number; name: string; season_number: number }>
+  >([])
+  const [tmdbSelectedSeries, setTmdbSelectedSeries] = createSignal<{
+    id: number
+    name: string
+  } | null>(null)
+  const [tmdbSelectedSeason, setTmdbSelectedSeason] = createSignal<{
+    season_number: number
+    name: string
+  } | null>(null)
+  const [tmdbLoading, setTmdbLoading] = createSignal(false)
+  const [tmdbTarget, setTmdbTarget] = createSignal<{
+    episodeId: string
+  } | null>(null)
+
+  const openTmdbModal = (episodeId: string) => {
+    setTmdbTarget({ episodeId })
+    setTmdbTVResults([])
+    setTmdbMovieResults([])
+    setTmdbSeasons([])
+    setTmdbEpisodes([])
+    setTmdbSelectedSeries(null)
+    setTmdbSelectedSeason(null)
+    setTmdbModalOpen(true)
+  }
+  const closeTmdbModal = () => setTmdbModalOpen(false)
+
+  const searchTmdb = async () => {
+    const query = searchStore.state.query.trim()
+    if (!query) return
+    setTmdbLoading(true)
+    try {
+      const tmdb = new TMDB()
+      const result = await tmdb.searchMulti(query)
+      const multi = result.search.multi.results
+      setTmdbTVResults(
+        multi
+          .filter((r) => r.media_type === 'tv')
+          .map((r) => ({
+            id: r.id,
+            name: r.name ?? '',
+            original_name: r.original_name ?? '',
+          })),
+      )
+      setTmdbMovieResults(
+        multi
+          .filter((r) => r.media_type === 'movie')
+          .map((r) => ({
+            id: r.id,
+            title: r.title ?? '',
+            original_title: r.original_title ?? '',
+          })),
+      )
+    } catch {
+      setTmdbTVResults([])
+      setTmdbMovieResults([])
+    } finally {
+      setTmdbLoading(false)
+    }
+  }
+
+  const selectTmdbSeries = async (series: { id: number; name: string }) => {
+    setTmdbSelectedSeries(series)
+    setTmdbLoading(true)
+    try {
+      const tmdb = new TMDB()
+      const result = await tmdb.getTVSeriesInfo(`tv/${series.id}`)
+      const seasons = (result.tv.series.seasons ?? [])
+        .filter((s) => s.season_number > 0)
+        .map((s) => ({
+          season_number: s.season_number,
+          name: s.name,
+          episode_count: s.episode_count ?? 0,
+        }))
+      setTmdbSeasons(seasons)
+    } catch {
+      setTmdbSeasons([])
+    } finally {
+      setTmdbLoading(false)
+    }
+  }
+
+  const selectTmdbSeason = async (season: {
+    season_number: number
+    name: string
+  }) => {
+    setTmdbSelectedSeason(season)
+    const series = tmdbSelectedSeries()
+    if (!series) return
+    setTmdbLoading(true)
+    try {
+      const tmdb = new TMDB()
+      const result = await tmdb.getTVSeasonInfo(
+        `tv/${series.id}/season/${season.season_number}`,
+      )
+      setTmdbEpisodes(
+        result.tv.season.episodes?.map((e) => ({
+          episode_number: e.episode_number,
+          name: e.name,
+          season_number: e.season_number,
+        })) ?? [],
+      )
+    } catch {
+      setTmdbEpisodes([])
+    } finally {
+      setTmdbLoading(false)
+    }
+  }
+
+  const selectTmdbEpisode = (episode: {
+    episode_number: number
+    season_number: number
+  }) => {
+    const target = tmdbTarget()
+    const series = tmdbSelectedSeries()
+    if (!target || !series) return
+    const urlc = `tv/${series.id}/season/${episode.season_number}/episode/${episode.episode_number}`
+    updateEpisodeRefs(target.episodeId, { tmdb_urlc: urlc })
+    closeTmdbModal()
+  }
+
+  const selectTmdbMovie = (movie: { id: number }) => {
+    const target = tmdbTarget()
+    if (!target) return
+    updateEpisodeRefs(target.episodeId, { tmdb_urlc: `movie/${movie.id}` })
+    closeTmdbModal()
+  }
+
   const deleteEpisode = (id: string) => {
     const numericId = Number.parseInt(id, 10)
     if (props.resource.p.some((clip) => clip[3] === numericId)) return
@@ -1643,27 +1878,47 @@ function ResourceEditor(props: {
                     <div class="grid gap-2 md:grid-cols-2">
                       <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
                         bgmtv_epid
-                        <input
-                          value={refs().bgmtv_epid ?? ''}
-                          onInput={(event) =>
-                            updateEpisodeRefs(id(), {
-                              bgmtv_epid: event.currentTarget.value,
-                            })
-                          }
-                          class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                        />
+                        <div class="flex gap-1">
+                          <input
+                            value={refs().bgmtv_epid ?? ''}
+                            onInput={(event) =>
+                              updateEpisodeRefs(id(), {
+                                bgmtv_epid: event.currentTarget.value,
+                              })
+                            }
+                            class="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => openBgmtvModal(id())}
+                            class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                            title="搜索 Bangumi 剧集"
+                          >
+                            🔍
+                          </button>
+                        </div>
                       </label>
                       <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
                         tmdb_urlc
-                        <input
-                          value={refs().tmdb_urlc ?? ''}
-                          onInput={(event) =>
-                            updateEpisodeRefs(id(), {
-                              tmdb_urlc: event.currentTarget.value,
-                            })
-                          }
-                          class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                        />
+                        <div class="flex gap-1">
+                          <input
+                            value={refs().tmdb_urlc ?? ''}
+                            onInput={(event) =>
+                              updateEpisodeRefs(id(), {
+                                tmdb_urlc: event.currentTarget.value,
+                              })
+                            }
+                            class="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => openTmdbModal(id())}
+                            class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                            title="搜索 TMDB 影视"
+                          >
+                            🔍
+                          </button>
+                        </div>
                       </label>
                     </div>
                     <div class="md:col-span-2 flex items-center justify-end">
@@ -1713,6 +1968,292 @@ function ResourceEditor(props: {
           </div>
         </div>
       </div>
+
+      {/* BgmTv 搜索弹窗 */}
+      <Show when={bgmtvModalOpen()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4">
+          <div class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl">
+            <div class="flex items-center justify-between border-b border-border px-5 py-4">
+              <h2 class="m-0 text-lg font-semibold text-foreground">
+                搜索 Bangumi 剧集
+              </h2>
+              <button
+                type="button"
+                onClick={closeBgmtvModal}
+                class="rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground transition hover:bg-muted"
+              >
+                ✕
+              </button>
+            </div>
+            <div class="min-h-0 overflow-auto p-5">
+              <SearchBox
+                placeholder="输入作品名称搜索..."
+                onSearch={searchBgmTv}
+              />
+              <Show when={bgmtvSelectedSubject()}>
+                <div class="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>已选作品：</span>
+                  <span class="font-medium text-foreground">
+                    {bgmtvSelectedSubject()!.name_cn ||
+                      bgmtvSelectedSubject()!.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBgmtvSelectedSubject(null)
+                      setBgmtvEpisodes([])
+                    }}
+                    class="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    重新选择
+                  </button>
+                </div>
+              </Show>
+              <div class="mt-3 flex max-h-96 flex-col gap-2 overflow-auto rounded-md border border-border p-2">
+                <Show when={!bgmtvSelectedSubject()}>
+                  <Index each={bgmtvResults()}>
+                    {(subject) => (
+                      <button
+                        type="button"
+                        onClick={() => selectBgmTvSubject(subject())}
+                        class="rounded-md border border-border bg-muted p-3 text-left transition hover:bg-accent"
+                      >
+                        <div class="text-sm font-medium text-foreground">
+                          {subject().name_cn || subject().name}
+                        </div>
+                        <Show
+                          when={
+                            subject().name_cn &&
+                            subject().name_cn !== subject().name
+                          }
+                        >
+                          <div class="mt-1 text-xs text-muted-foreground">
+                            {subject().name}
+                          </div>
+                        </Show>
+                      </button>
+                    )}
+                  </Index>
+                </Show>
+                <Show when={bgmtvSelectedSubject()}>
+                  <Index each={bgmtvEpisodes()}>
+                    {(episode) => (
+                      <button
+                        type="button"
+                        onClick={() => selectBgmTvEpisode(episode())}
+                        class="rounded-md border border-border bg-muted p-2 text-left transition hover:bg-accent"
+                      >
+                        <div class="text-sm text-foreground">
+                          <Show when={episode().ep}>
+                            <span class="font-semibold">EP{episode().ep}</span>
+                            <span class="mx-1 text-muted-foreground">|</span>
+                          </Show>
+                          <Show when={!episode().ep && episode().sort}>
+                            <span class="font-semibold">
+                              第{episode().sort}话
+                            </span>
+                            <span class="mx-1 text-muted-foreground">|</span>
+                          </Show>
+                          {episode().name_cn || episode().name}
+                        </div>
+                      </button>
+                    )}
+                  </Index>
+                </Show>
+                <Show
+                  when={
+                    !bgmtvLoading() &&
+                    searchStore.state.query &&
+                    ((bgmtvSelectedSubject() && !bgmtvEpisodes().length) ||
+                      (!bgmtvSelectedSubject() && !bgmtvResults().length))
+                  }
+                >
+                  <p class="p-4 text-center text-sm text-muted-foreground">
+                    无结果
+                  </p>
+                </Show>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      {/* TMDB 搜索弹窗 */}
+      <Show when={tmdbModalOpen()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4">
+          <div class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl">
+            <div class="flex items-center justify-between border-b border-border px-5 py-4">
+              <h2 class="m-0 text-lg font-semibold text-foreground">
+                搜索 TMDB 影视
+              </h2>
+              <button
+                type="button"
+                onClick={closeTmdbModal}
+                class="rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground transition hover:bg-muted"
+              >
+                ✕
+              </button>
+            </div>
+            <div class="min-h-0 overflow-auto p-5">
+              <SearchBox
+                placeholder="输入影视名称搜索..."
+                onSearch={searchTmdb}
+              />
+              <div class="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTmdbTab('tv')}
+                  class="rounded-md px-3 py-1 text-sm font-medium transition"
+                  classList={{
+                    'bg-foreground text-background': tmdbTab() === 'tv',
+                    'text-muted-foreground hover:text-foreground':
+                      tmdbTab() !== 'tv',
+                  }}
+                >
+                  电视剧
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTmdbTab('movie')}
+                  class="rounded-md px-3 py-1 text-sm font-medium transition"
+                  classList={{
+                    'bg-foreground text-background': tmdbTab() === 'movie',
+                    'text-muted-foreground hover:text-foreground':
+                      tmdbTab() !== 'movie',
+                  }}
+                >
+                  电影
+                </button>
+              </div>
+              <Show when={tmdbSelectedSeries()}>
+                <div class="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>已选：</span>
+                  <span class="font-medium text-foreground">
+                    {tmdbSelectedSeries()!.name}
+                  </span>
+                  <Show when={tmdbSelectedSeason()}>
+                    <span>→</span>
+                    <span class="font-medium text-foreground">
+                      {tmdbSelectedSeason()!.name}
+                    </span>
+                  </Show>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTmdbSelectedSeries(null)
+                      setTmdbSelectedSeason(null)
+                      setTmdbSeasons([])
+                      setTmdbEpisodes([])
+                    }}
+                    class="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    重新选择
+                  </button>
+                </div>
+              </Show>
+              <div class="mt-3 flex max-h-80 flex-col gap-2 overflow-auto rounded-md border border-border p-2">
+                <Show when={tmdbTab() === 'tv' && !tmdbSelectedSeries()}>
+                  <Index each={tmdbTVResults()}>
+                    {(series) => (
+                      <button
+                        type="button"
+                        onClick={() => selectTmdbSeries(series())}
+                        class="rounded-md border border-border bg-muted p-3 text-left transition hover:bg-accent"
+                      >
+                        <div class="text-sm font-medium text-foreground">
+                          {series().name}
+                        </div>
+                        <Show when={series().original_name !== series().name}>
+                          <div class="mt-1 text-xs text-muted-foreground">
+                            {series().original_name}
+                          </div>
+                        </Show>
+                      </button>
+                    )}
+                  </Index>
+                </Show>
+                <Show
+                  when={
+                    tmdbTab() === 'tv' &&
+                    tmdbSelectedSeries() &&
+                    !tmdbSelectedSeason()
+                  }
+                >
+                  <Index each={tmdbSeasons()}>
+                    {(season) => (
+                      <button
+                        type="button"
+                        onClick={() => selectTmdbSeason(season())}
+                        class="flex items-center justify-between rounded-md border border-border bg-muted p-2 text-left transition hover:bg-accent"
+                      >
+                        <span class="text-sm text-foreground">
+                          {season().name}
+                        </span>
+                        <span class="text-xs text-muted-foreground">
+                          {season().episode_count} 集
+                        </span>
+                      </button>
+                    )}
+                  </Index>
+                </Show>
+                <Show when={tmdbTab() === 'tv' && tmdbSelectedSeason()}>
+                  <Index each={tmdbEpisodes()}>
+                    {(episode) => (
+                      <button
+                        type="button"
+                        onClick={() => selectTmdbEpisode(episode())}
+                        class="rounded-md border border-border bg-muted p-2 text-left transition hover:bg-accent"
+                      >
+                        <span class="text-sm text-foreground">
+                          <span class="font-semibold">
+                            EP{episode().episode_number}
+                          </span>
+                          <span class="mx-1 text-muted-foreground">|</span>
+                          {episode().name}
+                        </span>
+                      </button>
+                    )}
+                  </Index>
+                </Show>
+                <Show when={tmdbTab() === 'movie'}>
+                  <Index each={tmdbMovieResults()}>
+                    {(movie) => (
+                      <button
+                        type="button"
+                        onClick={() => selectTmdbMovie(movie())}
+                        class="rounded-md border border-border bg-muted p-3 text-left transition hover:bg-accent"
+                      >
+                        <div class="text-sm font-medium text-foreground">
+                          {movie().title}
+                        </div>
+                        <Show when={movie().original_title !== movie().title}>
+                          <div class="mt-1 text-xs text-muted-foreground">
+                            {movie().original_title}
+                          </div>
+                        </Show>
+                      </button>
+                    )}
+                  </Index>
+                </Show>
+                <Show
+                  when={
+                    !tmdbLoading() &&
+                    searchStore.state.query &&
+                    ((tmdbTab() === 'tv' &&
+                      !tmdbSelectedSeries() &&
+                      !tmdbTVResults().length) ||
+                      (tmdbTab() === 'movie' && !tmdbMovieResults().length))
+                  }
+                >
+                  <p class="p-4 text-center text-sm text-muted-foreground">
+                    无结果
+                  </p>
+                </Show>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Show>
     </section>
   )
 }
