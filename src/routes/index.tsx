@@ -37,6 +37,17 @@ import { env } from '~/env'
 import { BgmTv } from '~/shared/3rd-ref/bgmtv'
 import { TMDB } from '~/shared/3rd-ref/tmdb'
 import { searchStore } from '~/lib/search-history'
+import {
+  createFastCapSyncClient,
+  createRemoteUpdateGuard,
+  createWindowSyncTransport,
+  getPlayerTimeAvailability,
+} from '~/lib/fastcap-sync'
+import type {
+  EditorContext,
+  FastCapSyncClient,
+  SyncClientEvent,
+} from '~/lib/fastcap-sync'
 
 export const Route = createFileRoute('/')({ component: App })
 
@@ -171,6 +182,12 @@ function App() {
   const [isEditorCollapsed, setIsEditorCollapsed] = createSignal(false)
   const [SonnerToaster, setSonnerToaster] =
     createSignal<Component<ToasterProps>>()
+  const [syncMode, setSyncMode] = createSignal(false)
+  const [syncConnected, setSyncConnected] = createSignal(false)
+  const [syncContext, setSyncContext] = createSignal<EditorContext>()
+  const remoteUpdateGuard = createRemoteUpdateGuard()
+  let syncClient: FastCapSyncClient | undefined
+  let unsubscribeSync: (() => void) | undefined
   let metadataRequestId = 0
   const [resourceSectionRef, setResourceSectionRef] =
     createSignal<HTMLDivElement>()
@@ -250,6 +267,12 @@ function App() {
       setIsEditorCollapsed(savedEditorCollapsed === 'true')
     }
 
+    syncClient = createFastCapSyncClient(createWindowSyncTransport())
+    if (syncClient) {
+      setSyncMode(true)
+      unsubscribeSync = syncClient.subscribe(handleSyncEvent)
+    }
+
     // query 参数创建初始资源草稿（不解析，等待用户手动操作）
     if (hasQueryConfig()) {
       setDraft({
@@ -266,6 +289,8 @@ function App() {
   })
 
   onCleanup(() => {
+    unsubscribeSync?.()
+    syncClient?.dispose()
     const previewUrl = imageExportPreviewUrl()
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   })
@@ -349,6 +374,39 @@ function App() {
     void loadMetadata(result.episodeRows)
   }
 
+  function handleSyncEvent(event: SyncClientEvent) {
+    if (event.type === 'context') {
+      setSyncContext(structuredClone(event.context))
+      setSyncConnected(true)
+      return
+    }
+    if (event.type === 'disconnect') {
+      setSyncConnected(false)
+      return
+    }
+    if (event.type === 'draft') {
+      remoteUpdateGuard.run(() => {
+        setDraft(normalizeFastCapDraftForEditor(event.draft))
+        setEditorError()
+      })
+      return
+    }
+    try {
+      const result = parseFastCapJson(event.config)
+      remoteUpdateGuard.run(() => {
+        inputForm.setFieldValue('input', result.yue, {
+          dontValidate: true,
+        })
+        showResult(result)
+        setInputSubmitError(undefined)
+        setEditorError()
+        setExportFormat('yue')
+      })
+    } catch {
+      // Invalid remote configs are ignored without disturbing local editor state.
+    }
+  }
+
   const exportText = createMemo(() => {
     const data = parsed()
     if (!data) return ''
@@ -413,10 +471,27 @@ function App() {
       showResult(result)
       setEditorError()
       setExportFormat('yue')
+      syncClient?.sendApply(result.json)
     } catch (applyError) {
       setEditorError(getErrorMessage(applyError))
     }
   }
+
+  const updateDraft = (next: FastCapJson) => {
+    setDraft(next)
+    setEditorError()
+    if (!remoteUpdateGuard.isActive()) syncClient?.sendDraft(next)
+  }
+
+  const requestPlayerTime = (cid: string) => {
+    if (!syncClient) return Promise.reject(new Error('当前不是同步编辑会话'))
+    return syncClient.requestPlayerTime(cid)
+  }
+
+  const currentSyncPage = createMemo(() => {
+    const context = syncContext()
+    return context?.pages.find((page) => page.cid === context.currentCid)
+  })
 
   const createEmptyConfig = () => {
     metadataRequestId += 1
@@ -492,6 +567,32 @@ function App() {
             />
           )
         }}
+      </Show>
+
+      <Show when={syncMode()}>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-border bg-muted px-4 py-2 text-xs text-muted-foreground">
+          <span
+            class="inline-flex items-center gap-2 font-semibold"
+            classList={{
+              'text-emerald-700': syncConnected(),
+              'text-amber-700': !syncConnected(),
+            }}
+          >
+            <span class="h-2 w-2 rounded-full bg-current" aria-hidden="true" />
+            {syncConnected() ? '已连接 B 站插件' : '等待 B 站插件'}
+          </span>
+          <Show when={syncContext()}>
+            {(context) => (
+              <>
+                <span>来源 {context().bvid}</span>
+                <span>
+                  当前分P {currentSyncPage()?.title || '未命名'} / CID{' '}
+                  {context().currentCid}
+                </span>
+              </>
+            )}
+          </Show>
+        </div>
       </Show>
 
       <section class="grid gap-6 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.4fr)]">
@@ -619,10 +720,12 @@ function App() {
                       collapsed={isEditorCollapsed()}
                       onApply={applyDraft}
                       onToggleCollapsed={toggleEditorCollapsed}
-                      onChange={(next) => {
-                        setDraft(next)
-                        setEditorError()
-                      }}
+                      syncConnected={syncConnected()}
+                      currentCid={syncContext()?.currentCid}
+                      requestPlayerTime={
+                        syncMode() ? requestPlayerTime : undefined
+                      }
+                      onChange={updateDraft}
                     />
                   </div>
                 )}
@@ -709,10 +812,12 @@ function App() {
                       collapsed={isEditorCollapsed()}
                       onApply={applyDraft}
                       onToggleCollapsed={toggleEditorCollapsed}
-                      onChange={(next) => {
-                        setDraft(next)
-                        setEditorError()
-                      }}
+                      syncConnected={syncConnected()}
+                      currentCid={syncContext()?.currentCid}
+                      requestPlayerTime={
+                        syncMode() ? requestPlayerTime : undefined
+                      }
+                      onChange={updateDraft}
                     />
                   )}
                 </Show>
@@ -1351,6 +1456,9 @@ function FastCapEditor(props: {
   draft: FastCapJson
   error?: string
   collapsed: boolean
+  syncConnected: boolean
+  currentCid?: string
+  requestPlayerTime?: (cid: string) => Promise<number>
   onApply: () => void
   onToggleCollapsed: () => void
   onChange: (next: FastCapJson) => void
@@ -1458,6 +1566,9 @@ function FastCapEditor(props: {
                 <ResourceEditor
                   resource={resource()}
                   resourceIndex={resourceIndex}
+                  syncConnected={props.syncConnected}
+                  currentCid={props.currentCid}
+                  requestPlayerTime={props.requestPlayerTime}
                   onChange={(next) => updateResource(resourceIndex, () => next)}
                   onDelete={() => deleteResource(resourceIndex)}
                 />
@@ -1489,6 +1600,9 @@ function ChevronDown(props: { class: string; collapsed: boolean }) {
 function ResourceEditor(props: {
   resource: FastCapResource
   resourceIndex: number
+  syncConnected: boolean
+  currentCid?: string
+  requestPlayerTime?: (cid: string) => Promise<number>
   onChange: (next: FastCapResource) => void
   onDelete: () => void
 }) {
@@ -1957,6 +2071,10 @@ function ResourceEditor(props: {
                 <ClipEditor
                   clip={clip()}
                   clipIndex={clipIndex}
+                  resourceCid={props.resource.id}
+                  syncConnected={props.syncConnected}
+                  currentCid={props.currentCid}
+                  requestPlayerTime={props.requestPlayerTime}
                   episodeIds={episodeEntries().map(([id]) =>
                     Number.parseInt(id, 10),
                   )}
@@ -2261,6 +2379,10 @@ function ResourceEditor(props: {
 function ClipEditor(props: {
   clip: [number, number, number, number]
   clipIndex: number
+  resourceCid: string
+  syncConnected: boolean
+  currentCid?: string
+  requestPlayerTime?: (cid: string) => Promise<number>
   episodeIds: Array<number>
   onChange: (next: [number, number, number, number]) => void
   onDelete: () => void
@@ -2269,6 +2391,18 @@ function ClipEditor(props: {
     const next: [number, number, number, number] = [...props.clip]
     next[position] = value
     props.onChange(next)
+  }
+
+  const playerTimeCapability = () => {
+    if (!props.requestPlayerTime) return undefined
+    return {
+      ...getPlayerTimeAvailability(
+        props.syncConnected,
+        props.resourceCid,
+        props.currentCid,
+      ),
+      request: () => props.requestPlayerTime!(props.resourceCid),
+    }
   }
 
   return (
@@ -2289,11 +2423,13 @@ function ClipEditor(props: {
         <TimestampField
           label="视频开始"
           value={props.clip[0]}
+          playerTime={playerTimeCapability()}
           onChange={(value) => updateValue(0, value)}
         />
         <TimestampField
           label="视频结束"
           value={props.clip[1]}
+          playerTime={playerTimeCapability()}
           onChange={(value) => updateValue(1, value)}
         />
         <TimestampField
@@ -2323,12 +2459,18 @@ function ClipEditor(props: {
 function TimestampField(props: {
   label: string
   value: number
+  playerTime?: {
+    enabled: boolean
+    disabledReason?: string
+    request: () => Promise<number>
+  }
   onChange: (value: number) => void
 }) {
   const [textValue, setTextValue] = createSignal(
     formatMilliseconds(props.value),
   )
   const [error, setError] = createSignal<string>()
+  const [isReadingPlayerTime, setIsReadingPlayerTime] = createSignal(false)
 
   createEffect(() => {
     setTextValue(formatMilliseconds(props.value))
@@ -2356,25 +2498,67 @@ function TimestampField(props: {
     setError()
   }
 
+  const readPlayerTime = async () => {
+    if (!props.playerTime?.enabled || isReadingPlayerTime()) return
+    setIsReadingPlayerTime(true)
+    setError()
+    try {
+      const milliseconds = await props.playerTime.request()
+      if (!Number.isInteger(milliseconds) || milliseconds < 0) {
+        throw new Error('播放器返回了无效进度')
+      }
+      props.onChange(milliseconds)
+      setTextValue(formatMilliseconds(milliseconds))
+    } catch (playerTimeError) {
+      setError(getErrorMessage(playerTimeError))
+    } finally {
+      setIsReadingPlayerTime(false)
+    }
+  }
+
   return (
-    <label class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
-      {props.label}
-      <input
-        value={textValue()}
-        onChange={(event) => applyTimestamp(event.currentTarget.value)}
-        class="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm text-foreground"
-      />
-      <input
-        type="number"
-        min="0"
-        value={String(props.value)}
-        onInput={(event) => applyMilliseconds(event.currentTarget.value)}
-        class="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground"
-      />
+    <div class="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
+      <div class="flex min-h-6 items-center justify-between gap-2">
+        <span>{props.label}</span>
+        <Show when={props.playerTime}>
+          {(capability) => (
+            <button
+              type="button"
+              disabled={!capability().enabled || isReadingPlayerTime()}
+              title={capability().disabledReason ?? '读取 B 站播放器当前进度'}
+              class="rounded-md border border-border bg-background px-2 py-0.5 text-xs font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => void readPlayerTime()}
+            >
+              {isReadingPlayerTime() ? '读取中…' : '当前进度'}
+            </button>
+          )}
+        </Show>
+      </div>
+      <label class="contents">
+        <span class="sr-only">{props.label}时间文本</span>
+        <input
+          value={textValue()}
+          onChange={(event) => applyTimestamp(event.currentTarget.value)}
+          class="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-sm text-foreground"
+        />
+      </label>
+      <label class="contents">
+        <span class="sr-only">{props.label}毫秒值</span>
+        <input
+          type="number"
+          min="0"
+          value={String(props.value)}
+          onInput={(event) => applyMilliseconds(event.currentTarget.value)}
+          class="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground"
+        />
+      </label>
       <Show when={error()}>
         {(message) => <span class="text-xs text-red-600">{message()}</span>}
       </Show>
-    </label>
+      <Show when={props.playerTime?.disabledReason}>
+        {(reason) => <span class="text-xs font-normal">{reason()}</span>}
+      </Show>
+    </div>
   )
 }
 
