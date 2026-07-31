@@ -9,7 +9,12 @@ export type SyncStateVersion = { counter: number; senderId: string }
 export type EditorContext = {
   bvid: string
   currentCid: string
-  pages: Array<{ cid: string; page: number; title: string }>
+  pages: Array<{
+    cid: string
+    page: number
+    title: string
+    durationMilliseconds?: number
+  }>
 }
 
 type SyncPayload =
@@ -60,10 +65,21 @@ export type FastCapSyncClient = {
   dispose: () => void
 }
 
+type ReadOnlyPreviewWindow = {
+  closed: boolean
+  focus: () => void
+}
+
+type ReadOnlyPreviewLauncherOptions = {
+  openWindow: (url: string, target: string) => ReadOnlyPreviewWindow | null
+  onBlocked: () => void
+}
+
 type ClientOptions = {
   requestTimeoutMs?: number
   readyRetryMs?: number
   readyRetryCount?: number
+  disconnectOnDispose?: boolean
 }
 
 type PendingPlayerTime = {
@@ -78,6 +94,50 @@ export function parseSyncSessionId(hash: string) {
     hash.startsWith('#') ? hash.slice(1) : hash,
   ).get('fastcap-sync')
   return value && /^[a-f\d]{32}$/i.test(value) ? value : undefined
+}
+
+export function isReadOnlyPreviewRequested(search: string) {
+  return (
+    new URLSearchParams(search.startsWith('?') ? search.slice(1) : search).get(
+      'ro',
+    ) === '1'
+  )
+}
+
+export function buildReadOnlyPreviewUrl(href: string) {
+  const url = new URL(href)
+  const sessionId = parseSyncSessionId(url.hash)
+  if (!sessionId) throw new Error('当前页面没有有效的同步会话')
+  url.searchParams.set('ro', '1')
+  return url.toString()
+}
+
+export function createReadOnlyPreviewLauncher(
+  options: ReadOnlyPreviewLauncherOptions,
+) {
+  let previewWindow: ReadOnlyPreviewWindow | null = null
+
+  return {
+    open(href: string) {
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.focus()
+        return true
+      }
+
+      const sessionId = parseSyncSessionId(new URL(href).hash)
+      if (!sessionId) throw new Error('当前页面没有有效的同步会话')
+      const opened = options.openWindow(
+        buildReadOnlyPreviewUrl(href),
+        `fastcap-preview-${sessionId}`,
+      )
+      if (!opened) {
+        options.onBlocked()
+        return false
+      }
+      previewWindow = opened
+      return true
+    },
+  }
 }
 
 export function compareSyncVersions(
@@ -284,7 +344,9 @@ export function createFastCapSyncClient(
 
   const dispose = () => {
     if (disposed) return
-    send({ type: 'disconnect', reason: 'page-closed' })
+    if (options.disconnectOnDispose !== false) {
+      send({ type: 'disconnect', reason: 'page-closed' })
+    }
     disposed = true
     stopReadyRetries()
     transport.removeMessageListener(handleMessage)
@@ -387,7 +449,10 @@ function isEditorContext(value: unknown): value is EditorContext {
         isRecord(page) &&
         typeof page.cid === 'string' &&
         Number.isInteger(page.page) &&
-        typeof page.title === 'string',
+        typeof page.title === 'string' &&
+        (page.durationMilliseconds === undefined ||
+          (Number.isSafeInteger(page.durationMilliseconds) &&
+            Number(page.durationMilliseconds) >= 0)),
     )
   )
 }

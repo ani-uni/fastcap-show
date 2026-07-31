@@ -34,6 +34,33 @@ const jsonInput: FastCapJson = {
 }
 
 describe('parseFastCapInput', () => {
+  it('formats imported resources before building views', () => {
+    const result = parseFastCapJson({
+      f: [
+        {
+          i: 'bili_cid',
+          id: '100',
+          p: [[0, 1000, 0, 1]],
+          t: { 1: { bgmtv_epid: '11' } },
+        },
+        {
+          i: 'bili_cid',
+          id: '200',
+          p: [[0, 1000, 0, 2]],
+          t: { 2: { tmdb_urlc: 'tv/1/season/1/episode/1', bgmtv_epid: '11' } },
+        },
+        { i: 'bili_cid', id: '300', p: [], t: {} },
+      ],
+    })
+
+    expect(result.json.f).toHaveLength(2)
+    expect(result.json.f.map((resource) => resource.t)).toEqual([
+      { 2: { bgmtv_epid: '11', tmdb_urlc: 'tv/1/season/1/episode/1' } },
+      { 2: { bgmtv_epid: '11', tmdb_urlc: 'tv/1/season/1/episode/1' } },
+    ])
+    expect(result.indexRows.map((row) => row.tempEpId)).toEqual([2, 2])
+  })
+
   it('parses json text', () => {
     const result = parseFastCapInput(JSON.stringify(jsonInput))
 

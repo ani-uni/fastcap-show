@@ -1,4 +1,4 @@
-import { FastCap, FastCapUtils } from '@ani-uni/fastcap'
+import FastCap, { FastCapUtils } from '@ani-uni/fastcap'
 
 export type FastCapJson = {
   f: Array<FastCapResource>
@@ -105,6 +105,8 @@ function buildFastCapResult(
   fc: FastCap,
   format: FastCapParseFormat,
 ): FastCapParseResult {
+  // Normalize once at the input boundary so all views and exports share the same episode IDs.
+  fc.fmt()
   const json = fc.toJSON() as FastCapJson
   const episodeRows = buildEpisodeRows(json)
   const indexRows = buildIndexRows(episodeRows)

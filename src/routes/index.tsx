@@ -33,15 +33,18 @@ import { getFastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
 import type { FastCapEpisodeMetadata } from '~/shared/fastcap/metadata.functions'
 import { fastcapHighlighter, HighlightedTokens } from '~/lib/highlighter'
 import { SearchBox } from '~/components/SearchBox'
+import { FastCapTimeline } from '~/components/FastCapTimeline'
 import { env } from '~/env'
 import { BgmTv } from '~/shared/3rd-ref/bgmtv'
 import { TMDB } from '~/shared/3rd-ref/tmdb'
 import { searchStore } from '~/lib/search-history'
 import {
+  createReadOnlyPreviewLauncher,
   createFastCapSyncClient,
   createRemoteUpdateGuard,
   createWindowSyncTransport,
   getPlayerTimeAvailability,
+  isReadOnlyPreviewRequested,
 } from '~/lib/fastcap-sync'
 import type {
   EditorContext,
@@ -185,8 +188,14 @@ function App() {
   const [syncMode, setSyncMode] = createSignal(false)
   const [syncConnected, setSyncConnected] = createSignal(false)
   const [syncContext, setSyncContext] = createSignal<EditorContext>()
+  const [readOnlyPreviewRequested, setReadOnlyPreviewRequested] =
+    createSignal(false)
+  const readOnlyPreview = createMemo(
+    () => readOnlyPreviewRequested() && syncConnected(),
+  )
   const remoteUpdateGuard = createRemoteUpdateGuard()
   let syncClient: FastCapSyncClient | undefined
+  let previewLauncher: ReturnType<typeof createReadOnlyPreviewLauncher>
   let unsubscribeSync: (() => void) | undefined
   let metadataRequestId = 0
   const [resourceSectionRef, setResourceSectionRef] =
@@ -267,11 +276,21 @@ function App() {
       setIsEditorCollapsed(savedEditorCollapsed === 'true')
     }
 
-    syncClient = createFastCapSyncClient(createWindowSyncTransport())
+    const requestedReadOnly = isReadOnlyPreviewRequested(window.location.search)
+    setReadOnlyPreviewRequested(requestedReadOnly)
+    syncClient = createFastCapSyncClient(createWindowSyncTransport(), {
+      disconnectOnDispose: !requestedReadOnly,
+    })
     if (syncClient) {
       setSyncMode(true)
       unsubscribeSync = syncClient.subscribe(handleSyncEvent)
     }
+    previewLauncher = createReadOnlyPreviewLauncher({
+      openWindow: (url, target) => window.open(url, target),
+      onBlocked: () => {
+        void showErrorToast('浏览器阻止了只读预览窗口')
+      },
+    })
 
     // query 参数创建初始资源草稿（不解析，等待用户手动操作）
     if (hasQueryConfig()) {
@@ -385,10 +404,34 @@ function App() {
       return
     }
     if (event.type === 'draft') {
-      remoteUpdateGuard.run(() => {
-        setDraft(normalizeFastCapDraftForEditor(event.draft))
-        setEditorError()
-      })
+      if (readOnlyPreview()) {
+        try {
+          const previewDraft = normalizeFastCapDraftForEditor(event.draft)
+          const result = parseFastCapJson(
+            sanitizeFastCapDraftForApply(previewDraft),
+          )
+          remoteUpdateGuard.run(() => {
+            inputForm.setFieldValue('input', result.yue, {
+              dontValidate: true,
+            })
+            showResult(result)
+            setDraft(previewDraft)
+            setInputSubmitError(undefined)
+            setEditorError()
+            setExportFormat('yue')
+          })
+        } catch (previewError) {
+          remoteUpdateGuard.run(() => {
+            setDraft(normalizeFastCapDraftForEditor(event.draft))
+            setEditorError(getErrorMessage(previewError))
+          })
+        }
+      } else {
+        remoteUpdateGuard.run(() => {
+          setDraft(normalizeFastCapDraftForEditor(event.draft))
+          setEditorError()
+        })
+      }
       return
     }
     try {
@@ -414,6 +457,7 @@ function App() {
   })
 
   const parseInput = async () => {
+    if (readOnlyPreview()) return
     setIsParsing(true)
     void dismissToasts()
     await waitForPaint()
@@ -430,6 +474,7 @@ function App() {
   }
 
   const readClipboardAndParse = async () => {
+    if (readOnlyPreview()) return
     setIsParsing(true)
     void dismissToasts()
     await waitForPaint()
@@ -462,6 +507,7 @@ function App() {
   }
 
   const applyDraft = () => {
+    if (readOnlyPreview()) return
     const data = draft()
     if (!data) return
 
@@ -478,6 +524,24 @@ function App() {
   }
 
   const updateDraft = (next: FastCapJson) => {
+    if (readOnlyPreview()) {
+      try {
+        const previewDraft = normalizeFastCapDraftForEditor(next)
+        const result = parseFastCapJson(
+          sanitizeFastCapDraftForApply(previewDraft),
+        )
+        inputForm.setFieldValue('input', result.yue, { dontValidate: true })
+        showResult(result)
+        setDraft(previewDraft)
+        setInputSubmitError(undefined)
+        setEditorError()
+        setExportFormat('yue')
+      } catch (previewError) {
+        setDraft(next)
+        setEditorError(getErrorMessage(previewError))
+      }
+      return
+    }
     setDraft(next)
     setEditorError()
     if (!remoteUpdateGuard.isActive()) syncClient?.sendDraft(next)
@@ -494,6 +558,7 @@ function App() {
   })
 
   const createEmptyConfig = () => {
+    if (readOnlyPreview()) return
     metadataRequestId += 1
     inputForm.setFieldValue('input', '', { dontValidate: true })
     setParsed()
@@ -503,6 +568,11 @@ function App() {
     setMetadata()
     setIsLoadingMetadata(false)
     setExportFormat('toml')
+  }
+
+  const openReadOnlyPreview = () => {
+    if (!syncConnected() || readOnlyPreview()) return
+    previewLauncher.open(window.location.href)
   }
 
   const renderImageExportPreview = async (format: ImageExportFormat) => {
@@ -579,7 +649,11 @@ function App() {
             }}
           >
             <span class="h-2 w-2 rounded-full bg-current" aria-hidden="true" />
-            {syncConnected() ? '已连接 B 站插件' : '等待 B 站插件'}
+            {syncConnected()
+              ? readOnlyPreview()
+                ? '只读预览 · 已连接 B 站插件'
+                : '已连接 B 站插件'
+              : '等待 B 站插件'}
           </span>
           <Show when={syncContext()}>
             {(context) => (
@@ -595,8 +669,17 @@ function App() {
         </div>
       </Show>
 
-      <section class="grid gap-6 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.4fr)]">
-        <div class="rounded-lg border border-border bg-background p-5 shadow-sm">
+      <section
+        class="grid gap-6"
+        classList={{
+          'lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.4fr)]':
+            !syncConnected() || readOnlyPreview(),
+        }}
+      >
+        <div
+          class="rounded-lg border border-border bg-background p-5 shadow-sm"
+          classList={{ hidden: syncConnected() && !readOnlyPreview() }}
+        >
           <div class="mb-4 flex items-start justify-between gap-4">
             <div>
               <p class="mb-1 text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
@@ -609,6 +692,8 @@ function App() {
             <div class="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
+                disabled={readOnlyPreview()}
+                title={readOnlyPreview() ? '只读预览不能创建配置' : undefined}
                 class="rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
                 onClick={createEmptyConfig}
               >
@@ -616,7 +701,8 @@ function App() {
               </button>
               <button
                 type="button"
-                disabled={isParsing()}
+                disabled={isParsing() || readOnlyPreview()}
+                title={readOnlyPreview() ? '只读预览不能读取配置' : undefined}
                 class="rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
                 onClick={readClipboardAndParse}
               >
@@ -624,7 +710,8 @@ function App() {
               </button>
               <button
                 type="button"
-                disabled={isParsing()}
+                disabled={isParsing() || readOnlyPreview()}
+                title={readOnlyPreview() ? '只读预览不能解析配置' : undefined}
                 class="rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
                 onClick={parseInput}
               >
@@ -644,6 +731,7 @@ function App() {
                 value={field().state.value}
                 language={getInputHighlightLanguage(field().state.value)}
                 minHeightClass="min-h-[420px]"
+                readOnly={readOnlyPreview()}
                 onInput={field().handleChange}
               />
             )}
@@ -720,10 +808,20 @@ function App() {
                       collapsed={isEditorCollapsed()}
                       onApply={applyDraft}
                       onToggleCollapsed={toggleEditorCollapsed}
-                      syncConnected={syncConnected()}
+                      syncConnected={syncConnected() && !readOnlyPreview()}
+                      readOnlyPreview={readOnlyPreview()}
+                      syncContext={syncContext()}
+                      metadata={metadata()}
                       currentCid={syncContext()?.currentCid}
                       requestPlayerTime={
-                        syncMode() ? requestPlayerTime : undefined
+                        syncConnected() && !readOnlyPreview()
+                          ? requestPlayerTime
+                          : undefined
+                      }
+                      onOpenReadOnlyPreview={
+                        syncConnected() && !readOnlyPreview()
+                          ? openReadOnlyPreview
+                          : undefined
                       }
                       onChange={updateDraft}
                     />
@@ -812,10 +910,20 @@ function App() {
                       collapsed={isEditorCollapsed()}
                       onApply={applyDraft}
                       onToggleCollapsed={toggleEditorCollapsed}
-                      syncConnected={syncConnected()}
+                      syncConnected={syncConnected() && !readOnlyPreview()}
+                      readOnlyPreview={readOnlyPreview()}
+                      syncContext={syncContext()}
+                      metadata={metadata()}
                       currentCid={syncContext()?.currentCid}
                       requestPlayerTime={
-                        syncMode() ? requestPlayerTime : undefined
+                        syncConnected() && !readOnlyPreview()
+                          ? requestPlayerTime
+                          : undefined
+                      }
+                      onOpenReadOnlyPreview={
+                        syncConnected() && !readOnlyPreview()
+                          ? openReadOnlyPreview
+                          : undefined
                       }
                       onChange={updateDraft}
                     />
@@ -1457,12 +1565,27 @@ function FastCapEditor(props: {
   error?: string
   collapsed: boolean
   syncConnected: boolean
+  readOnlyPreview: boolean
+  syncContext?: EditorContext
+  metadata?: Record<string, FastCapEpisodeMetadata>
   currentCid?: string
   requestPlayerTime?: (cid: string) => Promise<number>
   onApply: () => void
+  onOpenReadOnlyPreview?: () => void
   onToggleCollapsed: () => void
   onChange: (next: FastCapJson) => void
 }) {
+  const [advancedOpen, setAdvancedOpen] = createSignal(false)
+  const timelineAvailable = createMemo(
+    () =>
+      props.syncConnected &&
+      (props.draft.f.length > 0 || Boolean(props.syncContext?.pages.length)),
+  )
+  const missingSyncPages = createMemo(() => {
+    if (!props.syncConnected || !props.syncContext) return []
+    const resourceCids = new Set(props.draft.f.map((resource) => resource.id))
+    return props.syncContext.pages.filter((page) => !resourceCids.has(page.cid))
+  })
   const updateResource = (
     resourceIndex: number,
     updater: (resource: FastCapResource) => FastCapResource,
@@ -1475,12 +1598,18 @@ function FastCapEditor(props: {
   }
 
   const addResource = () => {
+    let resourceId = ''
+    if (props.syncConnected) {
+      const syncPage = missingSyncPages().find((_page, index) => index === 0)
+      if (!syncPage) return
+      resourceId = syncPage.cid
+    }
     props.onChange({
       f: [
         ...props.draft.f,
         {
           i: 'bili_cid',
-          id: '',
+          id: resourceId,
           p: [],
           t: {
             1: createEmptyEpisodeRef(),
@@ -1519,22 +1648,51 @@ function FastCapEditor(props: {
               可视化编辑器
             </h2>
             <p class="mt-1 mb-0 text-xs text-muted-foreground">
-              改动保存在草稿中，点击应用后才会更新配置文本和表格。
+              {timelineAvailable()
+                ? '拖动时间轴编辑草稿，点击应用后更新配置文本和表格。'
+                : props.readOnlyPreview
+                  ? '本页调整仅用于预览和导出；主编辑页的新草稿会覆盖本地调整。'
+                  : '改动保存在草稿中，点击应用后才会更新配置文本和表格。'}
             </p>
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
           <Show when={!props.collapsed}>
+            <Show when={props.onOpenReadOnlyPreview}>
+              {(openPreview) => (
+                <button
+                  type="button"
+                  class="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+                  onClick={openPreview()}
+                >
+                  预览 / 导出
+                </button>
+              )}
+            </Show>
             <button
               type="button"
-              class="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+              disabled={props.syncConnected && missingSyncPages().length === 0}
+              title={
+                props.syncConnected && missingSyncPages().length === 0
+                  ? '同步中的所有分P都已有资源'
+                  : undefined
+              }
+              class="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               onClick={addResource}
             >
-              新增资源
+              {props.syncConnected
+                ? missingSyncPages().length > 0
+                  ? `新增分P资源 (${missingSyncPages().length})`
+                  : '分P资源已齐'
+                : '新增资源'}
             </button>
             <button
               type="button"
-              class="rounded-md bg-foreground px-3 py-1.5 text-sm font-semibold text-background transition hover:bg-card"
+              disabled={props.readOnlyPreview}
+              title={
+                props.readOnlyPreview ? '只读预览不能应用到最终配置' : undefined
+              }
+              class="rounded-md bg-foreground px-3 py-1.5 text-sm font-semibold text-background transition hover:bg-card disabled:cursor-not-allowed disabled:opacity-50"
               onClick={props.onApply}
             >
               应用到配置
@@ -1552,20 +1710,23 @@ function FastCapEditor(props: {
           )}
         </Show>
 
-        <div class="flex flex-col gap-4">
-          <Show
-            when={props.draft.f.length > 0}
-            fallback={
-              <div class="rounded-md border border-dashed border-border bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
-                还没有资源。点击“新增资源”开始创建 fastcap 配置。
-              </div>
-            }
-          >
-            <Index each={props.draft.f}>
-              {(resource, resourceIndex) => (
+        <Show when={timelineAvailable()}>
+          <div class="mb-4 flex flex-col gap-3">
+            <FastCapTimeline
+              draft={props.draft}
+              context={props.syncContext}
+              metadata={props.metadata}
+              syncConnected={props.syncConnected}
+              requestPlayerTime={props.requestPlayerTime}
+              onChange={props.onChange}
+              onError={(message) => {
+                if (message) void showErrorToast(message)
+              }}
+              renderEpisodeEditor={(resourceIndex) => (
                 <ResourceEditor
-                  resource={resource()}
+                  resource={props.draft.f[resourceIndex]}
                   resourceIndex={resourceIndex}
+                  episodesOnly
                   syncConnected={props.syncConnected}
                   currentCid={props.currentCid}
                   requestPlayerTime={props.requestPlayerTime}
@@ -1573,9 +1734,48 @@ function FastCapEditor(props: {
                   onDelete={() => deleteResource(resourceIndex)}
                 />
               )}
-            </Index>
-          </Show>
-        </div>
+            />
+            <div class="flex justify-end">
+              <button
+                type="button"
+                aria-expanded={advancedOpen()}
+                class="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+                onClick={() => setAdvancedOpen((open) => !open)}
+              >
+                {advancedOpen() ? '收起高级表单编辑' : '展开高级表单编辑'}
+              </button>
+            </div>
+          </div>
+        </Show>
+
+        <Show when={!timelineAvailable() || advancedOpen()}>
+          <div class="flex flex-col gap-4">
+            <Show
+              when={props.draft.f.length > 0}
+              fallback={
+                <div class="rounded-md border border-dashed border-border bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
+                  还没有资源。点击“新增资源”开始创建 fastcap 配置。
+                </div>
+              }
+            >
+              <Index each={props.draft.f}>
+                {(resource, resourceIndex) => (
+                  <ResourceEditor
+                    resource={resource()}
+                    resourceIndex={resourceIndex}
+                    syncConnected={props.syncConnected}
+                    currentCid={props.currentCid}
+                    requestPlayerTime={props.requestPlayerTime}
+                    onChange={(next) =>
+                      updateResource(resourceIndex, () => next)
+                    }
+                    onDelete={() => deleteResource(resourceIndex)}
+                  />
+                )}
+              </Index>
+            </Show>
+          </div>
+        </Show>
       </Show>
     </div>
   )
@@ -1600,6 +1800,7 @@ function ChevronDown(props: { class: string; collapsed: boolean }) {
 function ResourceEditor(props: {
   resource: FastCapResource
   resourceIndex: number
+  episodesOnly?: boolean
   syncConnected: boolean
   currentCid?: string
   requestPlayerTime?: (cid: string) => Promise<number>
@@ -1930,43 +2131,68 @@ function ResourceEditor(props: {
   }
 
   return (
-    <section class="rounded-lg border border-border bg-muted p-4">
-      <div class="mb-4 flex flex-wrap items-end gap-3">
-        <label class="flex min-w-32 flex-1 flex-col gap-1 text-xs font-semibold text-muted-foreground">
-          索引类型
-          <input
-            value={props.resource.i}
-            readOnly
-            class="rounded-md border border-border bg-muted px-2 py-1.5 text-sm font-medium text-muted-foreground"
-          />
-        </label>
-        <label class="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-semibold text-muted-foreground">
-          资源 ID
-          <input
-            value={props.resource.id}
-            onInput={(event) => setResource({ id: event.currentTarget.value })}
-            class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-          />
-        </label>
-        <button
-          type="button"
-          class="rounded-md border border-red-200 bg-background px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
-          onClick={props.onDelete}
-        >
-          删除资源
-        </button>
-      </div>
+    <section
+      classList={{
+        'rounded-lg border border-border bg-muted p-4': !props.episodesOnly,
+        'min-w-0': props.episodesOnly,
+      }}
+    >
+      <Show when={!props.episodesOnly}>
+        <div class="mb-4 flex flex-wrap items-end gap-3">
+          <label class="flex min-w-32 flex-1 flex-col gap-1 text-xs font-semibold text-muted-foreground">
+            索引类型
+            <input
+              value={props.resource.i}
+              readOnly
+              class="rounded-md border border-border bg-muted px-2 py-1.5 text-sm font-medium text-muted-foreground"
+            />
+          </label>
+          <label class="flex min-w-48 flex-[2] flex-col gap-1 text-xs font-semibold text-muted-foreground">
+            资源 ID
+            <input
+              value={props.resource.id}
+              onInput={(event) =>
+                setResource({ id: event.currentTarget.value })
+              }
+              class="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+            />
+          </label>
+          <button
+            type="button"
+            class="rounded-md border border-red-200 bg-background px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+            onClick={props.onDelete}
+          >
+            删除资源
+          </button>
+        </div>
+      </Show>
 
-      <div class="grid gap-4 2xl:grid-cols-2">
-        <div class="rounded-md border border-border bg-background p-3">
-          <div class="mb-3 flex items-center justify-between gap-3">
-            <h3 class="m-0 text-sm font-semibold text-foreground">剧集表</h3>
+      <div
+        class="grid gap-4"
+        classList={{ '2xl:grid-cols-2': !props.episodesOnly }}
+      >
+        <div
+          classList={{
+            'rounded-md border border-border bg-background p-3':
+              !props.episodesOnly,
+          }}
+        >
+          <div
+            class="mb-3 flex items-center gap-3"
+            classList={{
+              'justify-between': !props.episodesOnly,
+              'justify-end': props.episodesOnly,
+            }}
+          >
+            <Show when={!props.episodesOnly}>
+              <h3 class="m-0 text-sm font-semibold text-foreground">剧集表</h3>
+            </Show>
             <button
               type="button"
               class="rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-foreground transition hover:bg-muted"
               onClick={addEpisode}
             >
-              新增剧集
+              新建剧集
             </button>
           </div>
           <div class="flex flex-col gap-3">
@@ -2054,37 +2280,39 @@ function ResourceEditor(props: {
           </div>
         </div>
 
-        <div class="rounded-md border border-border bg-background p-3">
-          <div class="mb-3 flex items-center justify-between gap-3">
-            <h3 class="m-0 text-sm font-semibold text-foreground">片段</h3>
-            <button
-              type="button"
-              class="rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-foreground transition hover:bg-muted"
-              onClick={addClip}
-            >
-              新增片段
-            </button>
+        <Show when={!props.episodesOnly}>
+          <div class="rounded-md border border-border bg-background p-3">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <h3 class="m-0 text-sm font-semibold text-foreground">片段</h3>
+              <button
+                type="button"
+                class="rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-foreground transition hover:bg-muted"
+                onClick={addClip}
+              >
+                新增片段
+              </button>
+            </div>
+            <div class="flex flex-col gap-3">
+              <Index each={props.resource.p}>
+                {(clip, clipIndex) => (
+                  <ClipEditor
+                    clip={clip()}
+                    clipIndex={clipIndex}
+                    resourceCid={props.resource.id}
+                    syncConnected={props.syncConnected}
+                    currentCid={props.currentCid}
+                    requestPlayerTime={props.requestPlayerTime}
+                    episodeIds={episodeEntries().map(([id]) =>
+                      Number.parseInt(id, 10),
+                    )}
+                    onChange={(next) => updateClip(clipIndex, next)}
+                    onDelete={() => deleteClip(clipIndex)}
+                  />
+                )}
+              </Index>
+            </div>
           </div>
-          <div class="flex flex-col gap-3">
-            <Index each={props.resource.p}>
-              {(clip, clipIndex) => (
-                <ClipEditor
-                  clip={clip()}
-                  clipIndex={clipIndex}
-                  resourceCid={props.resource.id}
-                  syncConnected={props.syncConnected}
-                  currentCid={props.currentCid}
-                  requestPlayerTime={props.requestPlayerTime}
-                  episodeIds={episodeEntries().map(([id]) =>
-                    Number.parseInt(id, 10),
-                  )}
-                  onChange={(next) => updateClip(clipIndex, next)}
-                  onDelete={() => deleteClip(clipIndex)}
-                />
-              )}
-            </Index>
-          </div>
-        </div>
+        </Show>
       </div>
 
       {/* BgmTv 搜索弹窗 */}

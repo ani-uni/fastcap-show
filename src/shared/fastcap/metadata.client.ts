@@ -2,6 +2,7 @@ import { env } from '~/env'
 import { BgmTv } from '../3rd-ref/bgmtv'
 import { TMDB, parseTMDBUrlC } from '../3rd-ref/tmdb'
 import type { FastCapEpisodeMetadata } from './metadata.functions'
+import { parseDurationTextMilliseconds } from './duration'
 
 function replaceBgmDomain(url: string): string {
   const mirror = env.VITE_BGMTV_MIRROR
@@ -41,6 +42,7 @@ export async function getFastCapEpisodeMetadataClient(
           .filter(Boolean)
           .join(' · '),
         duration: episode.duration || undefined,
+        durationMilliseconds: parseDurationTextMilliseconds(episode.duration),
         imageUrl: subject?.images.common
           ? replaceBgmDomain(subject.images.common)
           : undefined,
@@ -78,6 +80,9 @@ export async function getFastCapEpisodeMetadataClient(
           seasonTitle: season.name || `Season ${episode.season_number}`,
           episodeLabel: `S${episode.season_number}E${episode.episode_number}`,
           duration: episode.runtime ? `${episode.runtime} min` : undefined,
+          durationMilliseconds: episode.runtime
+            ? episode.runtime * 60_000
+            : undefined,
           imageUrl: episode.still_path
             ? getTMDBImageUrl(episode.still_path)
             : season.poster_path
@@ -108,6 +113,9 @@ export async function getFastCapEpisodeMetadataClient(
           seriesTitle: result.movie.title || result.movie.original_title,
           duration: result.movie.runtime
             ? `${result.movie.runtime} min`
+            : undefined,
+          durationMilliseconds: result.movie.runtime
+            ? result.movie.runtime * 60_000
             : undefined,
           imageUrl: result.movie.poster_path
             ? getTMDBImageUrl(result.movie.poster_path)

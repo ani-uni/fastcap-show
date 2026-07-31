@@ -6,10 +6,13 @@ import {
   SYNC_PROTOCOL_VERSION,
   USERSCRIPT_TO_PAGE_BRIDGE,
   compareSyncVersions,
+  buildReadOnlyPreviewUrl,
   createFastCapSyncClient,
+  createReadOnlyPreviewLauncher,
   createRemoteUpdateGuard,
   getPlayerTimeAvailability,
   isSyncEnvelope,
+  isReadOnlyPreviewRequested,
   parseSyncSessionId,
 } from './fastcap-sync'
 import type { SyncEnvelope, SyncTransport } from './fastcap-sync'
@@ -29,6 +32,46 @@ describe('fastcap sync protocol', () => {
     )
     expect(parseSyncSessionId('#fastcap-sync=short')).toBeUndefined()
     expect(parseSyncSessionId('#other=1')).toBeUndefined()
+  })
+
+  it('builds a read-only preview URL preserving the current session', () => {
+    const url = new URL(
+      buildReadOnlyPreviewUrl(
+        `https://fastcap.example/?i=bili_cid&id=100#other=kept&fastcap-sync=${sessionId}`,
+      ),
+    )
+    expect(url.searchParams.get('ro')).toBe('1')
+    expect(url.searchParams.get('i')).toBe('bili_cid')
+    expect(url.searchParams.get('id')).toBe('100')
+    expect(new URLSearchParams(url.hash.slice(1)).get('other')).toBe('kept')
+    expect(new URLSearchParams(url.hash.slice(1)).get('fastcap-sync')).toBe(
+      sessionId,
+    )
+    expect(() => buildReadOnlyPreviewUrl('https://fastcap.example/')).toThrow(
+      '当前页面没有有效的同步会话',
+    )
+    expect(isReadOnlyPreviewRequested(url.search)).toBe(true)
+    expect(isReadOnlyPreviewRequested('?ro=true')).toBe(false)
+  })
+
+  it('opens one preview window and focuses it on repeated requests', () => {
+    const opened: Array<{ url: string; target: string }> = []
+    let focused = 0
+    const launcher = createReadOnlyPreviewLauncher({
+      openWindow: (url, target) => {
+        opened.push({ url, target })
+        return { closed: false, focus: () => (focused += 1) }
+      },
+      onBlocked: vi.fn(),
+    })
+
+    const href = `https://fastcap.example/editor?source=bili#fastcap-sync=${sessionId}`
+    expect(launcher.open(href)).toBe(true)
+    expect(launcher.open(href)).toBe(true)
+    expect(opened).toHaveLength(1)
+    expect(focused).toBe(1)
+    expect(new URL(opened[0].url).searchParams.get('ro')).toBe('1')
+    expect(parseSyncSessionId(new URL(opened[0].url).hash)).toBe(sessionId)
   })
 
   it('validates envelope identity and typed payloads', () => {
@@ -83,6 +126,39 @@ describe('fastcap sync protocol', () => {
       disabledReason: undefined,
     })
   })
+
+  it('accepts optional safe page durations and rejects invalid durations', () => {
+    const context = {
+      bvid: 'BV1',
+      currentCid: '100',
+      pages: [
+        { cid: '100', page: 1, title: 'P1', durationMilliseconds: 120_000 },
+      ],
+    }
+    expect(isSyncEnvelope(envelope({ type: 'context', context }))).toBe(true)
+    expect(
+      isSyncEnvelope(
+        envelope({
+          type: 'context',
+          context: {
+            ...context,
+            pages: [{ ...context.pages[0], durationMilliseconds: -1 }],
+          },
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      isSyncEnvelope(
+        envelope({
+          type: 'context',
+          context: {
+            ...context,
+            pages: [{ cid: '100', page: 1, title: 'legacy' }],
+          },
+        }),
+      ),
+    ).toBe(true)
+  })
 })
 
 describe('FastCapSyncClient', () => {
@@ -126,6 +202,15 @@ describe('FastCapSyncClient', () => {
       compareSyncVersions(sentApply.version, sentDraft.version),
     ).toBeGreaterThan(0)
     client.dispose()
+  })
+
+  it('does not disconnect the shared session when a preview is disposed', () => {
+    const transport = new FakeTransport()
+    const client = createFastCapSyncClient(transport, {
+      disconnectOnDispose: false,
+    })!
+    client.dispose()
+    expect(() => transport.lastEnvelope('disconnect')).toThrow()
   })
 
   it('resolves player time responses and rejects bridge errors', async () => {
